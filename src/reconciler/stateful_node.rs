@@ -1,7 +1,6 @@
 use component::Component;
 use element::{HostElement, StatefulElement};
-use reconciler::NodeCreator;
-use reconciler::VirtualNode;
+use reconciler::{VirtualNode, NodeCreator, mount_node};
 use std::marker::PhantomData;
 
 struct StatefulNode<H, Class>
@@ -12,6 +11,7 @@ where
     component: Class,
     props: Class::Props,
     state: Class::State,
+    child: Option<Box<dyn VirtualNode<H>>>,
     _phantom: PhantomData<H>,
 }
 
@@ -27,6 +27,7 @@ where
             component: component,
             props: self.props.clone(),
             state: initial_state,
+            child: None,
             _phantom: PhantomData,
         })
     }
@@ -37,13 +38,23 @@ where
     H: HostElement,
     Class: Component<H>,
 {
-    fn mount(&mut self) {}
+    fn mount(&mut self) {
+        let element = self.component.render(&self.props, &self.state);
+
+        let mut child = mount_node(element);
+
+        child.mount();
+
+        self.child = Some(child);
+
+        self.component.did_mount();
+    }
 
     fn update(&mut self) {}
 
     fn unmount(&mut self) {}
 
-    fn render(&self) -> H::DomNode {
-        unimplemented!()
+    fn render(&self) -> Option<H::DomNode> {
+        self.child.as_ref()?.render()
     }
 }

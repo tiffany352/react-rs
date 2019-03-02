@@ -2,10 +2,10 @@ use component::Component;
 use reconciler::NodeCreator;
 use std::marker::PhantomData;
 
-pub trait HostElement: 'static + Sized {
+pub trait HostElement: 'static + Sized + Clone {
     type DomNode;
 
-    fn new_virtual_node(h: Self, children: Vec<Self::DomNode>) -> Self::DomNode;
+    fn new_dom_node(h: Self, children: Vec<Self::DomNode>) -> Self::DomNode;
 }
 
 pub enum Element<H: HostElement> {

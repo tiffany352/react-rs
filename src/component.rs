@@ -7,4 +7,6 @@ pub trait Component<H: HostElement>: Sized {
     fn render(&self, props: &Self::Props, state: &Self::State) -> Element<H>;
 
     fn create(initial_props: &Self::Props) -> (Self, Self::State);
+
+    fn did_mount(&mut self) {}
 }

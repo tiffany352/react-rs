@@ -17,19 +17,19 @@ pub struct Widget {
 }
 
 /// A description of a widget, which will be reified into a virtual node.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum WidgetElement {
     Div(DivElement),
     Text(TextElement),
 }
 
 /// Obligatory container element.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DivElement {
 }
 
 /// Text label element.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TextElement {
     pub text: String,
 }
@@ -38,7 +38,7 @@ pub struct TextElement {
 impl HostElement for WidgetElement {
     type DomNode = Widget;
 
-    fn new_virtual_node(element: Self, children: Vec<Self::DomNode>) -> Self::DomNode {
+    fn new_dom_node(element: Self, children: Vec<Self::DomNode>) -> Self::DomNode {
         Widget {
             class: match element {
                 WidgetElement::Div(_) => "div",
