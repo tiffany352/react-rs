@@ -42,4 +42,8 @@ where
     fn update(&mut self) {}
 
     fn unmount(&mut self) {}
+
+    fn render(&self) -> H::DomNode {
+        unimplemented!()
+    }
 }

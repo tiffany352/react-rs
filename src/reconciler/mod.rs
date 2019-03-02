@@ -8,6 +8,7 @@ pub trait VirtualNode<H: HostElement> {
     fn mount(&mut self);
     fn update(&mut self);
     fn unmount(&mut self);
+    fn render(&self) -> H::DomNode;
 }
 
 mod host_node;
@@ -18,7 +19,10 @@ where
     H: HostElement,
 {
     match element {
-        Element::Host { element: _, children: _ } => unimplemented!(),
+        Element::Host {
+            element: _,
+            children: _,
+        } => unimplemented!(),
         Element::Stateful(node_creator) => node_creator.create_node(),
     }
 }
@@ -27,11 +31,25 @@ pub struct VirtualTree<H: HostElement> {
     root: Box<dyn VirtualNode<H>>,
 }
 
-pub fn mount<H>(element: Element<H>) -> VirtualTree<H>
+impl<H> VirtualTree<H>
 where
     H: HostElement,
 {
-    VirtualTree {
-        root: mount_node(element),
+    pub fn mount(element: Element<H>) -> Self {
+        VirtualTree {
+            root: mount_node(element),
+        }
+    }
+
+    pub fn update(self, _element: Element<H>) -> Self {
+        unimplemented!()
+    }
+
+    pub fn unmount(self) {
+        unimplemented!()
+    }
+
+    pub fn render(&self) -> H::DomNode {
+        unimplemented!()
     }
 }

@@ -25,7 +25,8 @@ pub enum WidgetElement {
 
 /// Obligatory container element.
 #[derive(Debug)]
-pub struct DivElement {}
+pub struct DivElement {
+}
 
 /// Text label element.
 #[derive(Debug)]
@@ -35,9 +36,9 @@ pub struct TextElement {
 
 /// Called by the reifier when reifying elements into virtual nodes.
 impl HostElement for WidgetElement {
-    type VirtualNode = Widget;
+    type DomNode = Widget;
 
-    fn new_virtual_node(element: Self, children: Vec<Self::VirtualNode>) -> Self::VirtualNode {
+    fn new_virtual_node(element: Self, children: Vec<Self::DomNode>) -> Self::DomNode {
         Widget {
             class: match element {
                 WidgetElement::Div(_) => "div",
@@ -54,13 +55,15 @@ impl HostElement for WidgetElement {
 
 pub struct Counter;
 
-impl Component<WidgetElement, (), usize> for Counter {
-    fn render(
-        &self,
-        _props: &(),
-        state: &usize,
-        _children: &[Element<WidgetElement>],
-    ) -> Element<WidgetElement> {
+impl Component<WidgetElement> for Counter {
+    type Props = ();
+    type State = usize;
+
+    fn create(_initial_props: &()) -> (Counter, usize) {
+        (Counter, 0)
+    }
+
+    fn render(&self, _props: &(), state: &usize) -> Element<WidgetElement> {
         Element::new_host(
             WidgetElement::Text(TextElement {
                 text: format!("{}", state),
@@ -73,23 +76,25 @@ impl Component<WidgetElement, (), usize> for Counter {
 pub struct App;
 
 impl Component<WidgetElement> for App {
-    fn render(
-        &self,
-        _props: &(),
-        _state: &(),
-        _children: &[Element<WidgetElement>],
-    ) -> Element<WidgetElement> {
+    type Props = ();
+    type State = ();
+
+    fn create(_initial_props: &()) -> (App, ()) {
+        (App, ())
+    }
+
+    fn render(&self, _props: &(), _state: &()) -> Element<WidgetElement> {
         Element::new_host(
             WidgetElement::Div(DivElement {}),
-            vec![Element::new_stateful(Counter, (), vec![])],
+            vec![Element::new_stateful::<Counter>(())],
         )
     }
 }
 
 fn main() {
-    let app = App;
-    let element = Element::new_stateful(app, (), vec![]);
-    let node = element.reify();
+    let element = Element::new_stateful::<App>(());
+    let tree = react_rs::VirtualTree::<WidgetElement>::mount(element);
+    let node = tree.render();
     println!("{:#?}", node);
     /*
         Widget {
