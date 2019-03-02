@@ -25,8 +25,7 @@ pub enum WidgetElement {
 
 /// Obligatory container element.
 #[derive(Debug, Clone)]
-pub struct DivElement {
-}
+pub struct DivElement {}
 
 /// Text label element.
 #[derive(Debug, Clone)]
@@ -76,43 +75,104 @@ impl Component<WidgetElement> for Counter {
 pub struct App;
 
 impl Component<WidgetElement> for App {
-    type Props = ();
+    type Props = String;
     type State = ();
 
-    fn create(_initial_props: &()) -> (App, ()) {
+    fn create(_initial_props: &String) -> (App, ()) {
         (App, ())
     }
 
-    fn render(&self, _props: &(), _state: &()) -> Element<WidgetElement> {
+    fn render(&self, props: &String, _state: &()) -> Element<WidgetElement> {
         Element::new_host(
             WidgetElement::Div(DivElement {}),
-            vec![Element::new_stateful::<Counter>(())],
+            vec![
+                Element::new_host(
+                    WidgetElement::Text(TextElement {
+                        text: props.to_owned(),
+                    }),
+                    vec![],
+                ),
+                Element::new_stateful::<Counter>(()),
+            ],
         )
     }
 }
 
 fn main() {
-    let element = Element::new_stateful::<App>(());
+    let element = Element::new_stateful::<App>("First run".to_owned());
     let tree = react_rs::VirtualTree::<WidgetElement>::mount(element);
-    let node = tree.render();
-    println!("{:#?}", node);
+
+    {
+        let node = tree.render();
+        println!("{:#?}", node);
+    }
+
+    let element = Element::new_stateful::<App>("Second run".to_owned());
+    let tree = tree.update(element);
+
+    {
+        let node = tree.render();
+        println!("{:#?}", node);
+    }
+
+    tree.unmount();
+
     /*
-        Widget {
-            class: "div",
-            element: Div(
-                DivElement
-            ),
-            children: [
-                Widget {
-                    class: "text",
-                    element: Text(
-                        TextElement {
-                            text: "0"
-                        }
-                    ),
-                    children: []
-                }
-            ]
-        }
+        Some(
+            Widget {
+                class: "div",
+                element: Div(
+                    DivElement
+                ),
+                children: [
+                    Widget {
+                        class: "text",
+                        element: Text(
+                            TextElement {
+                                text: "First run"
+                            }
+                        ),
+                        children: []
+                    },
+                    Widget {
+                        class: "text",
+                        element: Text(
+                            TextElement {
+                                text: "0"
+                            }
+                        ),
+                        children: []
+                    }
+                ]
+            }
+        )
+        Some(
+            Widget {
+                class: "div",
+                element: Div(
+                    DivElement
+                ),
+                children: [
+                    Widget {
+                        class: "text",
+                        element: Text(
+                            TextElement {
+                                text: "Second run"
+                            }
+                        ),
+                        children: []
+                    },
+                    Widget {
+                        class: "text",
+                        element: Text(
+                            TextElement {
+                                text: "0"
+                            }
+                        ),
+                        children: []
+                    }
+                ]
+            }
+        )
     */
 }

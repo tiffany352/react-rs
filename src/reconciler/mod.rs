@@ -1,34 +1,30 @@
 use element::{Element, HostElement};
-
-pub trait NodeCreator<H: HostElement> {
-    fn create_node(&self) -> Box<dyn VirtualNode<H>>;
-}
-
-pub trait VirtualNode<H: HostElement> {
-    fn mount(&mut self);
-    fn update(&mut self);
-    fn unmount(&mut self);
-    fn render(&self) -> Option<H::DomNode>;
-}
+use std::any::Any;
 
 mod host_node;
 mod stateful_node;
+mod virtual_node;
 
-fn mount_node<H>(element: Element<H>) -> Box<dyn VirtualNode<H>>
-where
-    H: HostElement,
-{
-    match element {
-        Element::Host { element, children } => Box::new(host_node::HostNode {
-            element: element,
-            children: children.into_iter().map(|elt| mount_node(elt)).collect::<Vec<_>>(),
-        }),
-        Element::Stateful(node_creator) => node_creator.create_node(),
+pub use self::host_node::HostNode;
+pub use self::stateful_node::StatefulNodeWrapper;
+pub use self::virtual_node::VirtualNode;
+
+pub trait StatefulElementWrapper<H: HostElement>: Any {
+    fn create_node(&self) -> Box<dyn StatefulNodeWrapper<H>>;
+
+    fn as_any(&self) -> &dyn Any;
+
+    fn box_clone(&self) -> Box<dyn StatefulElementWrapper<H>>;
+}
+
+impl<H: HostElement> Clone for Box<StatefulElementWrapper<H>> {
+    fn clone(&self) -> Self {
+        self.box_clone()
     }
 }
 
 pub struct VirtualTree<H: HostElement> {
-    root: Box<dyn VirtualNode<H>>,
+    root: VirtualNode<H>,
 }
 
 impl<H> VirtualTree<H>
@@ -36,21 +32,19 @@ where
     H: HostElement,
 {
     pub fn mount(element: Element<H>) -> Self {
-        let mut root = mount_node(element);
+        let root = VirtualNode::mount(element);
 
-        root.mount();
+        VirtualTree { root: root }
+    }
 
+    pub fn update(self, element: Element<H>) -> Self {
         VirtualTree {
-            root: root,
+            root: VirtualNode::update(self.root, element),
         }
     }
 
-    pub fn update(self, _element: Element<H>) -> Self {
-        unimplemented!()
-    }
-
     pub fn unmount(self) {
-        unimplemented!()
+        VirtualNode::unmount(self.root);
     }
 
     pub fn render(&self) -> Option<H::DomNode> {

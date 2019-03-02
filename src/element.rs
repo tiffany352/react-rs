@@ -1,5 +1,5 @@
 use component::Component;
-use reconciler::NodeCreator;
+use reconciler::StatefulElementWrapper;
 use std::marker::PhantomData;
 
 pub trait HostElement: 'static + Sized + Clone {
@@ -8,20 +8,31 @@ pub trait HostElement: 'static + Sized + Clone {
     fn new_dom_node(h: Self, children: Vec<Self::DomNode>) -> Self::DomNode;
 }
 
+#[derive(Clone)]
 pub enum Element<H: HostElement> {
     Host {
         element: H,
         children: Vec<Element<H>>,
     },
-    Stateful(Box<dyn NodeCreator<H>>),
+    Stateful(Box<dyn StatefulElementWrapper<H>>),
 }
 
-pub struct StatefulElement<
-    H: HostElement,
-    Class: Component<H>,
-> {
+pub struct StatefulElement<H: HostElement, Class: Component<H>> {
     pub props: Class::Props,
     _phantom: PhantomData<(H, Class)>,
+}
+
+impl<H, Class> Clone for StatefulElement<H, Class>
+where
+    H: HostElement,
+    Class: Component<H>,
+{
+    fn clone(&self) -> Self {
+        StatefulElement {
+            props: self.props.clone(),
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<H: HostElement> Element<H> {
@@ -32,7 +43,11 @@ impl<H: HostElement> Element<H> {
         }
     }
 
-    pub fn new_functional<F, Props>(_func: F, _props: Props, _children: Vec<Element<H>>) -> Element<H>
+    pub fn new_functional<F, Props>(
+        _func: F,
+        _props: Props,
+        _children: Vec<Element<H>>,
+    ) -> Element<H>
     where
         F: Fn(&Props, &[Element<H>]) -> Element<H> + 'static,
         Props: 'static,

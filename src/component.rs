@@ -9,4 +9,12 @@ pub trait Component<H: HostElement>: Sized {
     fn create(initial_props: &Self::Props) -> (Self, Self::State);
 
     fn did_mount(&mut self) {}
+    fn will_unmount(&mut self) {}
+
+    fn get_derived_state_from_props(
+        _next_props: &Self::Props,
+        last_state: Self::State,
+    ) -> Self::State {
+        last_state
+    }
 }

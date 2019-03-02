@@ -1,4 +1,4 @@
-use element::HostElement;
+use element::{Element, HostElement};
 use reconciler::VirtualNode;
 
 pub struct HostNode<H>
@@ -6,24 +6,24 @@ where
     H: HostElement,
 {
     pub element: H,
-    pub children: Vec<Box<dyn VirtualNode<H>>>,
+    pub children: Vec<VirtualNode<H>>,
 }
 
-impl<H> VirtualNode<H> for HostNode<H>
+impl<H> HostNode<H>
 where
     H: HostElement,
 {
-    fn mount(&mut self) {
-        for mut child in &mut self.children {
-            child.mount();
+    pub fn mount(element: H, children: Vec<Element<H>>) -> HostNode<H> {
+        HostNode {
+            element: element,
+            children: children
+                .into_iter()
+                .map(|elt| VirtualNode::mount(elt))
+                .collect::<Vec<_>>(),
         }
     }
 
-    fn update(&mut self) {}
-
-    fn unmount(&mut self) {}
-
-    fn render(&self) -> Option<H::DomNode> {
+    pub fn render(&self) -> Option<H::DomNode> {
         let children = self
             .children
             .iter()

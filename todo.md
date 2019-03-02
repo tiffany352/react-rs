@@ -2,8 +2,8 @@
 
 - [x] `VirtualTree::mount`
 - [x] `VirtualTree::render`
-- [ ] `VirtualTree::update`
-- [ ] `VirtualTree::unmount`
+- [x] `VirtualTree::update`
+- [x] `VirtualTree::unmount`
 - [ ] Element keys
 - [ ] Fragments
 - [ ] Context
@@ -14,10 +14,10 @@
 - [x] `did_mount`
 - [x] `render`
 - [ ] `should_update`
-- [ ] `get_derived_state_from_props`
+- [x] `get_derived_state_from_props`
 - [ ] `will_update`
 - [ ] `did_update`
-- [ ] `will_unmount`
+- [x] `will_unmount`
 
 ### Snax macro
 
