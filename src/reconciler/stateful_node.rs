@@ -4,23 +4,21 @@ use reconciler::NodeCreator;
 use reconciler::VirtualNode;
 use std::marker::PhantomData;
 
-struct StatefulNode<H, Class, Props, State>
+struct StatefulNode<H, Class>
 where
     H: HostElement,
-    Class: Component<H, Props, State>,
+    Class: Component<H>,
 {
     component: Class,
-    props: Props,
-    state: State,
+    props: Class::Props,
+    state: Class::State,
     _phantom: PhantomData<H>,
 }
 
-impl<H, Class, Props, State> NodeCreator<H> for StatefulElement<H, Class, Props, State>
+impl<H, Class> NodeCreator<H> for StatefulElement<H, Class>
 where
     H: HostElement,
-    Class: Component<H, Props, State> + 'static,
-    Props: 'static+Clone,
-    State: 'static,
+    Class: Component<H> + 'static,
 {
     fn create_node(&self) -> Box<dyn VirtualNode<H>> {
         let (component, initial_state) = Class::create(&self.props);
@@ -34,10 +32,10 @@ where
     }
 }
 
-impl<H, Class, Props, State> VirtualNode<H> for StatefulNode<H, Class, Props, State>
+impl<H, Class> VirtualNode<H> for StatefulNode<H, Class>
 where
     H: HostElement,
-    Class: Component<H, Props, State>,
+    Class: Component<H>,
 {
     fn mount(&mut self) {}
 

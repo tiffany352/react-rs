@@ -18,12 +18,10 @@ pub enum Element<H: HostElement> {
 
 pub struct StatefulElement<
     H: HostElement,
-    Class: Component<H, Props, State>,
-    Props = (),
-    State = (),
+    Class: Component<H>,
 > {
-    pub props: Props,
-    _phantom: PhantomData<(H, Class, State)>,
+    pub props: Class::Props,
+    _phantom: PhantomData<(H, Class)>,
 }
 
 impl<H: HostElement> Element<H> {
@@ -42,15 +40,13 @@ impl<H: HostElement> Element<H> {
         unimplemented!()
     }
 
-    pub fn new_stateful<Class, Props, State>(props: Props) -> Element<H>
+    pub fn new_stateful<Class>(props: Class::Props) -> Element<H>
     where
-        Class: Component<H, Props, State> + 'static,
-        Props: 'static,
-        State: 'static + Default,
+        Class: Component<H> + 'static,
     {
         Element::Stateful(Box::new(StatefulElement {
             props: props,
-            _phantom: PhantomData::<(H, Class, State)>,
+            _phantom: PhantomData::<(H, Class)>,
         }))
     }
 }

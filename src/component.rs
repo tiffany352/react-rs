@@ -1,7 +1,10 @@
 use element::{Element, HostElement};
 
-pub trait Component<H: HostElement, Props = (), State = ()>: Sized {
-    fn render(&self, props: &Props, state: &State) -> Element<H>;
+pub trait Component<H: HostElement>: Sized {
+    type Props: Clone;
+    type State;
 
-    fn create(initial_props: &Props) -> (Self, State);
+    fn render(&self, props: &Self::Props, state: &Self::State) -> Element<H>;
+
+    fn create(initial_props: &Self::Props) -> (Self, Self::State);
 }
