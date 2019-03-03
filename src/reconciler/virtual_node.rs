@@ -1,10 +1,12 @@
 use super::HostNode;
 use super::StatefulNodeWrapper;
 use element::{Element, HostElement};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub enum VirtualNode<H: HostElement> {
     Host(HostNode<H>),
-    Stateful(Box<dyn StatefulNodeWrapper<H>>),
+    Stateful(Rc<RefCell<dyn StatefulNodeWrapper<H>>>),
 }
 
 impl<H> VirtualNode<H>
@@ -18,7 +20,7 @@ where
             }
             Element::Stateful(node_creator) => {
                 let mut node = node_creator.create_node();
-                node.mount();
+                node.borrow_mut().mount();
                 VirtualNode::Stateful(node)
             }
         }
@@ -30,30 +32,33 @@ where
                 // Just throw out the old value.
                 VirtualNode::mount(element)
             }
-            VirtualNode::Stateful(mut node) => match node.update(element) {
-                Ok(()) => VirtualNode::Stateful(node),
-                Err(element) => {
-                    // We can't update using this element, have to tear
-                    // down and mount a new node.
-                    node.unmount();
+            VirtualNode::Stateful(node) => {
+                let result = node.borrow_mut().update(element);
+                match result {
+                    Ok(()) => VirtualNode::Stateful(node),
+                    Err(element) => {
+                        // We can't update using this element, have to tear
+                        // down and mount a new node.
+                        node.borrow_mut().unmount();
 
-                    VirtualNode::mount(element)
+                        VirtualNode::mount(element)
+                    }
                 }
-            },
+            }
         }
     }
 
     pub fn unmount(node: VirtualNode<H>) {
         match node {
             VirtualNode::Host(_) => (),
-            VirtualNode::Stateful(mut node) => node.unmount(),
+            VirtualNode::Stateful(node) => node.borrow_mut().unmount(),
         }
     }
 
     pub fn render(&self) -> Option<H::DomNode> {
         match *self {
             VirtualNode::Host(ref node) => node.render(),
-            VirtualNode::Stateful(ref node) => node.render(),
+            VirtualNode::Stateful(ref node) => node.borrow().render(),
         }
     }
 }

@@ -1,16 +1,18 @@
 use element::{Element, HostElement};
 use std::any::Any;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 mod host_node;
 mod stateful_node;
 mod virtual_node;
 
 pub use self::host_node::HostNode;
-pub use self::stateful_node::StatefulNodeWrapper;
+pub use self::stateful_node::{StateUpdater, StatefulNodeWrapper};
 pub use self::virtual_node::VirtualNode;
 
 pub trait StatefulElementWrapper<H: HostElement>: Any {
-    fn create_node(&self) -> Box<dyn StatefulNodeWrapper<H>>;
+    fn create_node(&self) -> Rc<RefCell<dyn StatefulNodeWrapper<H>>>;
 
     fn as_any(&self) -> &dyn Any;
 

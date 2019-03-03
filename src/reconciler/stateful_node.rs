@@ -3,8 +3,10 @@ use element::Element;
 use element::{HostElement, StatefulElement};
 use reconciler::{StatefulElementWrapper, VirtualNode};
 use std::any::Any;
+use std::cell::RefCell;
 use std::clone::Clone;
 use std::marker::PhantomData;
+use std::rc::{Rc, Weak};
 
 struct StatefulNode<H, Class>
 where
@@ -23,6 +25,65 @@ pub trait StatefulNodeWrapper<H: HostElement> {
     fn update(&mut self, element: Element<H>) -> Result<(), Element<H>>;
     fn unmount(&mut self);
     fn render(&self) -> Option<H::DomNode>;
+}
+
+pub struct StateUpdater<H, Class>
+where
+    H: HostElement,
+    Class: Component<H>,
+{
+    ptr: Weak<RefCell<StatefulNode<H, Class>>>,
+}
+
+impl<H, Class> Clone for StateUpdater<H, Class>
+where
+    H: HostElement,
+    Class: Component<H>,
+{
+    fn clone(&self) -> StateUpdater<H, Class> {
+        StateUpdater {
+            ptr: self.ptr.clone(),
+        }
+    }
+}
+
+impl<H, Class> StateUpdater<H, Class>
+where
+    H: HostElement,
+    Class: Component<H>,
+{
+    fn new(ptr: &Rc<RefCell<StatefulNode<H, Class>>>) -> StateUpdater<H, Class> {
+        StateUpdater {
+            ptr: Rc::downgrade(ptr),
+        }
+    }
+
+    pub fn set_state(&self, new_state: Class::State) {
+        self.update_state(|_| new_state)
+    }
+
+    pub fn update_state<Func>(&self, func: Func)
+    where
+        Func: FnOnce(Class::State) -> Class::State,
+    {
+        if let Some(ptr) = self.ptr.upgrade() {
+            let mut node = ptr.borrow_mut();
+
+            node.state = Some((func)(node.state.take().unwrap()));
+
+            let updater: StateUpdater<H, Class> = (*self).clone();
+
+            let element = node
+                .component
+                .render(&node.props, node.state.as_ref().unwrap(), updater);
+
+            if let Some(child) = node.child.take() {
+                node.child = Some(VirtualNode::update(child, element));
+            } else {
+                node.child = Some(VirtualNode::mount(element));
+            }
+        }
+    }
 }
 
 impl<H, Class> StatefulNodeWrapper<H> for StatefulNode<H, Class>
@@ -90,16 +151,16 @@ where
     H: HostElement,
     Class: Component<H> + 'static,
 {
-    fn create_node(&self) -> Box<dyn StatefulNodeWrapper<H>> {
+    fn create_node(&self) -> Rc<RefCell<dyn StatefulNodeWrapper<H>>> {
         let (component, initial_state) = Class::create(&self.props);
 
-        Box::new(StatefulNode {
+        Rc::new(RefCell::new(StatefulNode {
             component: component,
             props: self.props.clone(),
             state: Some(initial_state),
             child: None,
             _phantom: PhantomData,
-        })
+        }))
     }
 
     fn as_any(&self) -> &dyn Any {
