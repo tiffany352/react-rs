@@ -114,6 +114,29 @@ where
         self.recurse_inner(self.items.last().unwrap(), &mut map_item)
     }
 
+    fn recurse_inner_mut<Func, Res>(&mut self, index: usize, map_item: &mut Func) -> Res
+    where
+        Func: FnMut(&mut Item, Vec<Res>, usize) -> Res,
+    {
+        let children = self.items[index]
+            .get_children()
+            .children
+            .clone()
+            .iter()
+            .map(|index| self.recurse_inner_mut(*index, map_item))
+            .collect::<Vec<_>>();
+
+        map_item(&mut self.items[index], children, index)
+    }
+
+    pub fn recurse_mut<Func, Res>(&mut self, mut map_item: Func) -> Res
+    where
+        Func: FnMut(&mut Item, Vec<Res>, usize) -> Res,
+    {
+        let root_index = self.items.len() - 1;
+        self.recurse_inner_mut(root_index, &mut map_item)
+    }
+
     pub fn transform_inner<Value, MountItem, UpdateItem, UnmountItem>(
         old_tree: &mut FlatTree<Item>,
         new_tree: &mut FlatTree<Item>,
