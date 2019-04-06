@@ -32,7 +32,7 @@ impl<H: HostElement> Clone for Box<StatefulElementWrapper<H>> {
 
 #[derive(Clone)]
 struct UpdateQueue<H: HostElement> {
-    queue: Arc<Mutex<Vec<Box<FnOnce(&mut VirtualTree<H>)>>>>,
+    queue: Arc<Mutex<Vec<Box<FnMut(&mut VirtualTree<H>)>>>>,
 }
 
 pub struct StateUpdater<H: HostElement, Class: Component<H>> {
@@ -51,13 +51,14 @@ where
         Func: FnOnce(Class::State) -> Class::State + 'static,
     {
         let index = self.node;
+        let mut func = Some(func);
         self.queue.push(self.node, move |tree| {
             let node = tree.tree.get_mut(index);
             match node {
                 VirtualNode::Host(_) => panic!(),
                 VirtualNode::Stateful(node) => {
                     match node.as_any_mut().downcast_mut::<StatefulNode<H, Class>>() {
-                        Some(ref mut node) => node.update_state(func),
+                        Some(ref mut node) => node.update_state(func.take().unwrap()),
                         None => panic!(),
                     }
                 }
@@ -77,12 +78,13 @@ where
         }
     }
 
-    pub fn push<Func: FnOnce(&mut VirtualTree<H>) + 'static>(&self, node_index: usize, func: Func) {
+    pub fn push<Func: FnMut(&mut VirtualTree<H>) + 'static>(&self, node_index: usize, func: Func) {
         self.queue.lock().unwrap().push(Box::new(func));
     }
 }
 
 pub struct VirtualTree<H: HostElement> {
+    current_element: Element<H>,
     tree: FlatTree<VirtualNode<H>>,
     update_queue: UpdateQueue<H>,
 }
@@ -111,9 +113,10 @@ where
     H: HostElement,
 {
     pub fn mount(element: Element<H>) -> Self {
-        let tree = FlatTree::build(element, VirtualNode::mount);
+        let tree = FlatTree::build(element.clone(), VirtualNode::mount);
 
         VirtualTree {
+            current_element: element,
             tree: tree,
             update_queue: UpdateQueue::new(),
         }
@@ -121,6 +124,7 @@ where
 
     pub fn update(self, element: Element<H>) -> Self {
         VirtualTree {
+            current_element: element.clone(),
             tree: self.tree.transform(
                 element,
                 VirtualNode::mount,
@@ -129,6 +133,21 @@ where
             ),
             update_queue: UpdateQueue::new(),
         }
+    }
+
+    pub fn flush(mut self) -> Self {
+        let items = {
+            let mut queue = self.update_queue.queue.lock().unwrap();
+            let items = queue
+                .drain(..)
+                .collect::<Vec<Box<FnMut(&mut VirtualTree<H>)>>>();
+            items
+        };
+        for mut func in items.into_iter() {
+            (func)(&mut self);
+        }
+        let element = self.current_element.clone();
+        self.update(element)
     }
 
     pub fn unmount(self) {
