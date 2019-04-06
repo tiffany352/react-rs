@@ -2,11 +2,16 @@ use component::Component;
 use reconciler::StatefulElementWrapper;
 use std::marker::PhantomData;
 
-pub trait HostElement: 'static + Sized {
-    type DomNode;
+pub trait DomNode<'a>
+where
+    Self: 'a + Sized,
+{
+    type Widget;
 
-    fn new_dom_node(h: &Self, children: Vec<Self::DomNode>) -> Self::DomNode;
+    fn new_dom_node(h: &'a Self::Widget, children: Vec<Self>) -> Self;
 }
+
+pub trait HostElement: 'static + Sized {}
 
 pub enum Element<H: HostElement> {
     Host {

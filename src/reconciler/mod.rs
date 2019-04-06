@@ -1,4 +1,5 @@
 use component::Component;
+use element::DomNode;
 use element::{Element, HostElement};
 use flat_tree::FlatTree;
 use flat_tree::GetNodeChildren;
@@ -198,7 +199,10 @@ where
         });
     }
 
-    pub fn render(&self) -> Option<H::DomNode> {
+    pub fn render<'a, Dom>(&'a self) -> Option<Dom>
+    where
+        Dom: DomNode<'a, Widget = H>,
+    {
         self.tree
             .recurse(|node, children| {
                 node.render(children.into_iter().filter_map(|x| x).collect::<Vec<_>>())

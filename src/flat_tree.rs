@@ -144,9 +144,9 @@ where
         }
     }
 
-    fn recurse_inner<Func, Res>(&self, item: &Item, map_item: &mut Func) -> Res
+    fn recurse_inner<'a, Func, Res>(&'a self, item: &'a Item, map_item: &mut Func) -> Res
     where
-        Func: FnMut(&Item, Vec<Res>) -> Res,
+        Func: FnMut(&'a Item, Vec<Res>) -> Res,
     {
         let children = item
             .get_children()
@@ -161,9 +161,9 @@ where
         map_item(item, children)
     }
 
-    pub fn recurse<Func, Res>(&self, mut map_item: Func) -> Option<Res>
+    pub fn recurse<'a, Func, Res>(&'a self, mut map_item: Func) -> Option<Res>
     where
-        Func: FnMut(&Item, Vec<Res>) -> Res,
+        Func: FnMut(&'a Item, Vec<Res>) -> Res,
     {
         if let Some(ref root) = self.root {
             let root = self.items.get(root).unwrap();

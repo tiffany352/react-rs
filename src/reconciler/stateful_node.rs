@@ -29,7 +29,6 @@ pub trait StatefulNodeWrapper<H: HostElement> {
         updater: GenericStateUpdater<H>,
     ) -> Result<Element<H>, Element<H>>;
     fn unmount(&mut self, updater: GenericStateUpdater<H>);
-    fn render(&self, children: Vec<H::DomNode>) -> Option<H::DomNode>;
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn get_children(&self) -> &NodeChildren<VirtualNode<H>>;
@@ -100,11 +99,6 @@ where
 
     fn unmount(&mut self, _updater: GenericStateUpdater<H>) {
         self.component.will_unmount();
-    }
-
-    fn render(&self, mut children: Vec<H::DomNode>) -> Option<H::DomNode> {
-        assert!(children.len() <= 1);
-        children.pop()
     }
 
     fn as_any(&self) -> &dyn Any {

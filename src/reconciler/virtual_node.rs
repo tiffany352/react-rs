@@ -1,5 +1,6 @@
 use super::HostNode;
 use super::StatefulNodeWrapper;
+use element::DomNode;
 use element::{Element, HostElement};
 use reconciler::GenericStateUpdater;
 
@@ -72,10 +73,17 @@ where
         }
     }
 
-    pub fn render(&self, children: Vec<H::DomNode>) -> Option<H::DomNode> {
+    pub fn render<'a, Dom>(&'a self, mut children: Vec<Dom>) -> Option<Dom>
+    where
+        Dom: DomNode<'a, Widget = H>,
+    {
         match *self {
             VirtualNode::Host(ref node) => node.render(children),
-            VirtualNode::Stateful(ref node) => node.render(children),
+            VirtualNode::Stateful(_) => {
+                assert!(children.len() <= 1);
+                let one_child = children.pop();
+                one_child
+            }
         }
     }
 }

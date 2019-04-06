@@ -1,3 +1,4 @@
+use element::DomNode;
 use element::HostElement;
 use flat_tree::NodeChildren;
 use reconciler::virtual_node::VirtualNode;
@@ -21,7 +22,10 @@ where
         }
     }
 
-    pub fn render(&self, children: Vec<H::DomNode>) -> Option<H::DomNode> {
-        Some(H::new_dom_node(&self.element, children))
+    pub fn render<'a, Dom>(&'a self, children: Vec<Dom>) -> Option<Dom>
+    where
+        Dom: DomNode<'a, Widget = H>,
+    {
+        Some(Dom::new_dom_node(&self.element, children))
     }
 }

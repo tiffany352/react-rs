@@ -1,5 +1,6 @@
 extern crate react_rs;
 
+use react_rs::DomNode;
 use react_rs::RenderContext;
 use react_rs::{Component, Element, HostElement};
 
@@ -9,46 +10,48 @@ use react_rs::{Component, Element, HostElement};
 /// The thing that should be reified to - can be either a virtual node
 /// to be reconciled, or directly passed to a renderer.
 #[derive(Debug)]
-pub struct Widget {
+pub struct Widget<'a> {
     pub class: &'static str,
     // Just for debugging.
-    pub element: WidgetElement,
+    pub element: &'a WidgetElement,
     // N.B. the type of the children array.
-    pub children: Vec<Widget>,
+    pub children: Vec<Widget<'a>>,
 }
 
 /// A description of a widget, which will be reified into a virtual node.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum WidgetElement {
     Div(DivElement),
     Text(TextElement),
 }
 
 /// Obligatory container element.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DivElement {}
 
 /// Text label element.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TextElement {
     pub text: String,
 }
 
-/// Called by the reifier when reifying elements into virtual nodes.
-impl HostElement for WidgetElement {
-    type DomNode = Widget;
+impl<'a> DomNode<'a> for Widget<'a> {
+    type Widget = WidgetElement;
 
-    fn new_dom_node(element: &Self, children: Vec<Self::DomNode>) -> Self::DomNode {
+    fn new_dom_node(element: &'a WidgetElement, children: Vec<Self>) -> Self {
         Widget {
             class: match element {
                 WidgetElement::Div(_) => "div",
                 WidgetElement::Text(_) => "text",
             },
-            element: element.clone(),
+            element: element,
             children: children,
         }
     }
 }
+
+/// Called by the reifier when reifying elements into virtual nodes.
+impl HostElement for WidgetElement {}
 
 // And now we construct an example "app" using our test gui framework
 // from above.
@@ -104,7 +107,7 @@ fn main() {
     let tree = react_rs::VirtualTree::<WidgetElement>::mount(element);
 
     {
-        let node = tree.render();
+        let node = tree.render::<Widget>();
         println!("{:#?}", node);
     }
 
@@ -112,7 +115,7 @@ fn main() {
     let tree = tree.update(element);
 
     {
-        let node = tree.render();
+        let node = tree.render::<Widget>();
         println!("{:#?}", node);
     }
 
