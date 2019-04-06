@@ -1,33 +1,30 @@
-use element::{Element, HostElement};
-use reconciler::VirtualNode;
+use element::HostElement;
+use reconciler::virtual_node::VirtualNode;
 
 pub struct HostNode<H>
 where
     H: HostElement,
 {
     pub element: H,
-    pub children: Vec<VirtualNode<H>>,
+    pub children: Vec<usize>,
 }
 
 impl<H> HostNode<H>
 where
     H: HostElement,
 {
-    pub fn mount(element: H, children: Vec<Element<H>>) -> HostNode<H> {
+    pub fn mount(element: H, children: Vec<usize>) -> HostNode<H> {
         HostNode {
             element: element,
-            children: children
-                .into_iter()
-                .map(|elt| VirtualNode::mount(elt))
-                .collect::<Vec<_>>(),
+            children: children,
         }
     }
 
-    pub fn render(&self) -> Option<H::DomNode> {
+    pub fn render(&self, nodes: &[VirtualNode<H>]) -> Option<H::DomNode> {
         let children = self
             .children
             .iter()
-            .filter_map(|node| node.render())
+            .filter_map(|index| nodes[*index].render(nodes))
             .collect::<Vec<H::DomNode>>();
 
         Some(H::new_dom_node(self.element.clone(), children))

@@ -1,3 +1,4 @@
+mod flat_tree;
 mod component;
 mod element;
 mod reconciler;

@@ -14,15 +14,21 @@ where
     component: Class,
     props: Class::Props,
     state: Option<Class::State>,
-    child: Option<VirtualNode<H>>,
+    child: Option<usize>,
     _phantom: PhantomData<H>,
 }
 
 pub trait StatefulNodeWrapper<H: HostElement> {
-    fn mount(&mut self);
-    fn update(&mut self, element: Element<H>) -> Result<(), Element<H>>;
-    fn unmount(&mut self);
-    fn render(&self) -> Option<H::DomNode>;
+    fn mount(&mut self, nodes: &mut Vec<VirtualNode<H>>);
+    fn update(
+        &mut self,
+        element: Element<H>,
+        old_nodes: &mut Vec<VirtualNode<H>>,
+        new_nodes: &mut Vec<VirtualNode<H>>,
+    ) -> Result<(), Element<H>>;
+    fn unmount(&mut self, nodes: &mut Vec<VirtualNode<H>>);
+    fn render(&self, nodes: &[VirtualNode<H>]) -> Option<H::DomNode>;
+    fn as_any(&self) -> &dyn Any;
 }
 
 impl<H, Class> StatefulNodeWrapper<H> for StatefulNode<H, Class>
@@ -30,17 +36,22 @@ where
     H: HostElement,
     Class: Component<H> + 'static,
 {
-    fn mount(&mut self) {
+    fn mount(&mut self, nodes: &mut Vec<VirtualNode<H>>) {
         let element = self
             .component
             .render(&self.props, self.state.as_ref().unwrap());
 
-        self.child = Some(VirtualNode::mount(element));
+        self.child = Some(VirtualNode::mount(element, nodes));
 
         self.component.did_mount();
     }
 
-    fn update(&mut self, element: Element<H>) -> Result<(), Element<H>> {
+    fn update(
+        &mut self,
+        element: Element<H>,
+        old_nodes: &mut Vec<VirtualNode<H>>,
+        new_nodes: &mut Vec<VirtualNode<H>>,
+    ) -> Result<(), Element<H>> {
         match element {
             Element::Host { .. } => Err(element),
             Element::Stateful(element) => {
@@ -57,10 +68,13 @@ where
                             .component
                             .render(&self.props, self.state.as_ref().unwrap());
 
-                        if let Some(child) = self.child.take() {
-                            self.child = Some(VirtualNode::update(child, element));
+                        if let Some(index) = self.child.take() {
+                            assert!(index + 1 == old_nodes.len());
+                            let child = old_nodes.pop().unwrap();
+                            self.child =
+                                Some(VirtualNode::update(child, element, old_nodes, new_nodes));
                         } else {
-                            self.child = Some(VirtualNode::mount(element));
+                            self.child = Some(VirtualNode::mount(element, new_nodes));
                         }
 
                         Ok(())
@@ -72,16 +86,22 @@ where
         }
     }
 
-    fn unmount(&mut self) {
+    fn unmount(&mut self, nodes: &mut Vec<VirtualNode<H>>) {
         self.component.will_unmount();
 
-        if let Some(child) = self.child.take() {
-            VirtualNode::unmount(child);
+        if let Some(index) = self.child.take() {
+            assert!(index + 1 == nodes.len());
+            let child = nodes.pop().unwrap();
+            VirtualNode::unmount(child, nodes);
         }
     }
 
-    fn render(&self) -> Option<H::DomNode> {
-        self.child.as_ref()?.render()
+    fn render(&self, nodes: &[VirtualNode<H>]) -> Option<H::DomNode> {
+        nodes[self.child?].render(nodes)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

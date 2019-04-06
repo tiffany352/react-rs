@@ -1,5 +1,6 @@
 use element::{Element, HostElement};
 use std::any::Any;
+use std::sync::{Arc, Mutex};
 
 mod host_node;
 mod stateful_node;
@@ -23,8 +24,37 @@ impl<H: HostElement> Clone for Box<StatefulElementWrapper<H>> {
     }
 }
 
+struct UpdateRequest<H: HostElement> {
+    node_index: usize,
+    func: Box<FnOnce(&mut VirtualNode<H>)>,
+}
+
+#[derive(Clone)]
+struct UpdateQueue<H: HostElement> {
+    queue: Arc<Mutex<Vec<UpdateRequest<H>>>>,
+}
+
+impl<H> UpdateQueue<H>
+where
+    H: HostElement,
+{
+    fn new() -> UpdateQueue<H> {
+        UpdateQueue {
+            queue: Arc::new(Mutex::new(vec![])),
+        }
+    }
+
+    pub fn push<Func: FnOnce(&mut VirtualNode<H>) + 'static>(&self, node_index: usize, func: Func) {
+        self.queue.lock().unwrap().push(UpdateRequest {
+            node_index,
+            func: Box::new(func),
+        });
+    }
+}
+
 pub struct VirtualTree<H: HostElement> {
-    root: VirtualNode<H>,
+    nodes: Vec<VirtualNode<H>>,
+    update_queue: UpdateQueue<H>,
 }
 
 impl<H> VirtualTree<H>
@@ -32,22 +62,31 @@ where
     H: HostElement,
 {
     pub fn mount(element: Element<H>) -> Self {
-        let root = VirtualNode::mount(element);
+        let mut nodes = vec![];
+        VirtualNode::mount(element, &mut nodes);
 
-        VirtualTree { root: root }
-    }
-
-    pub fn update(self, element: Element<H>) -> Self {
         VirtualTree {
-            root: VirtualNode::update(self.root, element),
+            nodes: nodes,
+            update_queue: UpdateQueue::new(),
         }
     }
 
-    pub fn unmount(self) {
-        VirtualNode::unmount(self.root);
+    pub fn update(mut self, element: Element<H>) -> Self {
+        let root = self.nodes.pop().unwrap();
+        let mut new_nodes = vec![];
+        VirtualNode::update(root, element, &mut self.nodes, &mut new_nodes);
+        VirtualTree {
+            nodes: new_nodes,
+            update_queue: UpdateQueue::new(),
+        }
+    }
+
+    pub fn unmount(mut self) {
+        let root = self.nodes.pop().unwrap();
+        VirtualNode::unmount(root, &mut self.nodes);
     }
 
     pub fn render(&self) -> Option<H::DomNode> {
-        self.root.render()
+        self.nodes.last().unwrap().render(&self.nodes)
     }
 }
