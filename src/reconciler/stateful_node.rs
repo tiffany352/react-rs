@@ -144,9 +144,4 @@ where
     fn as_any(&self) -> &dyn Any {
         self
     }
-
-    fn box_clone(&self) -> Box<dyn StatefulElementWrapper<H>> {
-        let clone: StatefulElement<H, Class> = (*self).clone();
-        Box::new(clone)
-    }
 }

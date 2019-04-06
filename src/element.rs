@@ -2,13 +2,12 @@ use component::Component;
 use reconciler::StatefulElementWrapper;
 use std::marker::PhantomData;
 
-pub trait HostElement: 'static + Sized + Clone {
+pub trait HostElement: 'static + Sized {
     type DomNode;
 
-    fn new_dom_node(h: Self, children: Vec<Self::DomNode>) -> Self::DomNode;
+    fn new_dom_node(h: &Self, children: Vec<Self::DomNode>) -> Self::DomNode;
 }
 
-#[derive(Clone)]
 pub enum Element<H: HostElement> {
     Host {
         element: H,
@@ -20,19 +19,6 @@ pub enum Element<H: HostElement> {
 pub struct StatefulElement<H: HostElement, Class: Component<H>> {
     pub props: Class::Props,
     _phantom: PhantomData<(H, Class)>,
-}
-
-impl<H, Class> Clone for StatefulElement<H, Class>
-where
-    H: HostElement,
-    Class: Component<H>,
-{
-    fn clone(&self) -> Self {
-        StatefulElement {
-            props: self.props.clone(),
-            _phantom: PhantomData,
-        }
-    }
 }
 
 impl<H: HostElement> Element<H> {

@@ -38,13 +38,13 @@ pub struct TextElement {
 impl HostElement for WidgetElement {
     type DomNode = Widget;
 
-    fn new_dom_node(element: Self, children: Vec<Self::DomNode>) -> Self::DomNode {
+    fn new_dom_node(element: &Self, children: Vec<Self::DomNode>) -> Self::DomNode {
         Widget {
             class: match element {
                 WidgetElement::Div(_) => "div",
                 WidgetElement::Text(_) => "text",
             },
-            element: element,
+            element: element.clone(),
             children: children,
         }
     }

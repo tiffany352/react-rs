@@ -22,6 +22,6 @@ where
     }
 
     pub fn render(&self, children: Vec<H::DomNode>) -> Option<H::DomNode> {
-        Some(H::new_dom_node(self.element.clone(), children))
+        Some(H::new_dom_node(&self.element, children))
     }
 }
