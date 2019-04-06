@@ -3,6 +3,8 @@ extern crate react_rs;
 use react_rs::DomNode;
 use react_rs::RenderContext;
 use react_rs::{Component, Element, HostElement};
+use std::cell::RefCell;
+use std::fmt;
 
 // First, we need to define our "gui framework" to use. `react_rs` is
 // generic over the host element type.
@@ -25,9 +27,19 @@ pub enum WidgetElement {
     Text(TextElement),
 }
 
+pub struct Callback(Option<Box<RefCell<dyn FnMut()>>>);
+
+impl fmt::Debug for Callback {
+    fn fmt(&self, _fmt: &mut fmt::Formatter) -> fmt::Result {
+        Ok(())
+    }
+}
+
 /// Obligatory container element.
 #[derive(Debug)]
-pub struct DivElement {}
+pub struct DivElement {
+    pub on_poke: Callback,
+}
 
 /// Text label element.
 #[derive(Debug)]
@@ -67,11 +79,19 @@ impl Component<WidgetElement> for Counter {
     }
 
     fn render(&self, ctx: RenderContext<WidgetElement, Self>) -> Element<WidgetElement> {
+        let updater = ctx.updater;
         Element::new_host(
             WidgetElement::Text(TextElement {
                 text: format!("{}", ctx.state),
             }),
-            vec![],
+            vec![Element::new_host(
+                WidgetElement::Div(DivElement {
+                    on_poke: Callback(Some(Box::new(RefCell::new(move || {
+                        updater.set_state(|old_state| old_state + 1)
+                    })))),
+                }),
+                vec![],
+            )],
         )
     }
 }
@@ -88,7 +108,9 @@ impl Component<WidgetElement> for App {
 
     fn render(&self, ctx: RenderContext<WidgetElement, Self>) -> Element<WidgetElement> {
         Element::new_host(
-            WidgetElement::Div(DivElement {}),
+            WidgetElement::Div(DivElement {
+                on_poke: Callback(None),
+            }),
             vec![
                 Element::new_host(
                     WidgetElement::Text(TextElement {
@@ -103,15 +125,27 @@ impl Component<WidgetElement> for App {
 }
 
 fn main() {
-    let element = Element::new_stateful::<App>("First run".to_owned());
+    let element = Element::new_stateful::<App>("App".to_owned());
     let tree = react_rs::VirtualTree::<WidgetElement>::mount(element);
 
     {
         let node = tree.render::<Widget>();
         println!("{:#?}", node);
+        let poke: &RefCell<dyn FnMut()> = match node.as_ref() {
+            Some(Widget { children, .. }) => match children[1].children[0].element {
+                WidgetElement::Div(DivElement {
+                    on_poke: Callback(Some(poke)),
+                }) => &**poke,
+                _ => panic!(),
+            },
+            _ => panic!(),
+        };
+        let mut borrow = poke.borrow_mut();
+        let func: &mut dyn FnMut() = &mut *borrow;
+        (*func)();
     }
 
-    let element = Element::new_stateful::<App>("Second run".to_owned());
+    let element = Element::new_stateful::<App>("App".to_owned());
     let tree = tree.update(element);
 
     {
@@ -126,14 +160,16 @@ fn main() {
             Widget {
                 class: "div",
                 element: Div(
-                    DivElement
+                    DivElement {
+                        on_poke:
+                    }
                 ),
                 children: [
                     Widget {
                         class: "text",
                         element: Text(
                             TextElement {
-                                text: "First run"
+                                text: "App"
                             }
                         ),
                         children: []
@@ -145,7 +181,17 @@ fn main() {
                                 text: "0"
                             }
                         ),
-                        children: []
+                        children: [
+                            Widget {
+                                class: "div",
+                                element: Div(
+                                    DivElement {
+                                        on_poke:
+                                    }
+                                ),
+                                children: []
+                            }
+                        ]
                     }
                 ]
             }
@@ -154,23 +200,35 @@ fn main() {
             Widget {
                 class: "div",
                 element: Div(
-                    DivElement
+                    DivElement {
+                        on_poke:
+                    }
                 ),
                 children: [
                     Widget {
                         class: "text",
                         element: Text(
                             TextElement {
-                                text: "Second run"
+                                text: "1"
                             }
                         ),
-                        children: []
+                        children: [
+                            Widget {
+                                class: "div",
+                                element: Div(
+                                    DivElement {
+                                        on_poke:
+                                    }
+                                ),
+                                children: []
+                            }
+                        ]
                     },
                     Widget {
                         class: "text",
                         element: Text(
                             TextElement {
-                                text: "0"
+                                text: "App"
                             }
                         ),
                         children: []
