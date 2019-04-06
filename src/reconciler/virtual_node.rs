@@ -1,7 +1,7 @@
 use super::HostNode;
 use super::StatefulNodeWrapper;
 use element::{Element, HostElement};
-use flat_tree::NodeKey;
+use reconciler::GenericStateUpdater;
 
 pub enum VirtualNode<H: HostElement> {
     Host(HostNode<H>),
@@ -14,7 +14,7 @@ where
 {
     pub fn mount(
         element: Element<H>,
-        index: NodeKey<VirtualNode<H>>,
+        updater: GenericStateUpdater<H>,
     ) -> (VirtualNode<H>, Vec<Element<H>>) {
         match element {
             Element::Host { element, children } => {
@@ -22,7 +22,7 @@ where
             }
             Element::Stateful(node_creator) => {
                 let mut node = node_creator.create_node();
-                let children = node.mount(index);
+                let children = node.mount(updater);
                 (VirtualNode::Stateful(node), vec![children])
             }
         }
@@ -31,7 +31,7 @@ where
     pub fn update(
         node: VirtualNode<H>,
         element: Element<H>,
-        index: NodeKey<VirtualNode<H>>,
+        updater: GenericStateUpdater<H>,
     ) -> (VirtualNode<H>, Vec<Element<H>>) {
         match (node, element) {
             (
@@ -47,26 +47,28 @@ where
                 VirtualNode::Host(HostNode { element, children }),
                 element_children,
             ),
-            (VirtualNode::Stateful(mut node), element) => match node.update(element, index) {
-                Ok(element) => (VirtualNode::Stateful(node), vec![element]),
-                Err(element) => {
-                    node.unmount(index);
-                    VirtualNode::mount(element, index)
+            (VirtualNode::Stateful(mut node), element) => {
+                match node.update(element, updater.clone()) {
+                    Ok(element) => (VirtualNode::Stateful(node), vec![element]),
+                    Err(element) => {
+                        node.unmount(updater.clone());
+                        VirtualNode::mount(element, updater)
+                    }
                 }
-            },
+            }
             (old_node, new_element) => {
                 // If they're not compatible, we have to unmount and
                 // remount.
-                VirtualNode::unmount(old_node, index);
-                VirtualNode::mount(new_element, index)
+                VirtualNode::unmount(old_node, updater.clone());
+                VirtualNode::mount(new_element, updater)
             }
         }
     }
 
-    pub fn unmount(node: VirtualNode<H>, index: NodeKey<VirtualNode<H>>) {
+    pub fn unmount(node: VirtualNode<H>, updater: GenericStateUpdater<H>) {
         match node {
             VirtualNode::Host(_) => (),
-            VirtualNode::Stateful(mut node) => node.unmount(index),
+            VirtualNode::Stateful(mut node) => node.unmount(updater),
         }
     }
 

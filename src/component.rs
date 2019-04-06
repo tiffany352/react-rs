@@ -1,10 +1,10 @@
 use element::{Element, HostElement};
-//use reconciler::StateUpdater;
+use reconciler::StateUpdater;
 
 pub struct RenderContext<'a, H: HostElement, Class: Component<H>> {
     pub props: &'a Class::Props,
     pub state: &'a Class::State,
-    //pub updater: StateUpdater<H, Class>,
+    pub updater: StateUpdater<H, Class>,
 }
 
 pub trait Component<H: HostElement>: Sized {

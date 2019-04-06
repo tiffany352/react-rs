@@ -36,6 +36,35 @@ struct UpdateQueue<H: HostElement> {
     queue: Arc<Mutex<Vec<Box<FnMut(&mut VirtualTree<H>)>>>>,
 }
 
+#[derive(Clone)]
+pub struct GenericStateUpdater<H: HostElement> {
+    queue: UpdateQueue<H>,
+    node: NodeKey<VirtualNode<H>>,
+}
+
+impl<H> GenericStateUpdater<H>
+where
+    H: HostElement,
+{
+    fn new(queue: &UpdateQueue<H>, key: NodeKey<VirtualNode<H>>) -> GenericStateUpdater<H> {
+        GenericStateUpdater {
+            queue: queue.clone(),
+            node: key,
+        }
+    }
+
+    pub fn specialize<Class>(&self) -> StateUpdater<H, Class>
+    where
+        Class: Component<H>,
+    {
+        StateUpdater {
+            queue: self.queue.clone(),
+            node: self.node,
+            _phantom: PhantomData,
+        }
+    }
+}
+
 pub struct StateUpdater<H: HostElement, Class: Component<H>> {
     queue: UpdateQueue<H>,
     node: NodeKey<VirtualNode<H>>,
@@ -63,8 +92,7 @@ where
                         None => panic!(),
                     }
                 }
-            };
-            unimplemented!()
+            }
         })
     }
 }
@@ -114,25 +142,31 @@ where
     H: HostElement,
 {
     pub fn mount(element: Element<H>) -> Self {
-        let tree = FlatTree::build(element.clone(), VirtualNode::mount);
+        let queue = UpdateQueue::new();
+        let tree = FlatTree::build(element.clone(), |node, index| {
+            VirtualNode::mount(node, GenericStateUpdater::new(&queue, index))
+        });
 
         VirtualTree {
             current_element: element,
             tree: tree,
-            update_queue: UpdateQueue::new(),
+            update_queue: queue,
         }
     }
 
     pub fn update(self, element: Element<H>) -> Self {
+        let queue = self.update_queue;
         VirtualTree {
             current_element: element.clone(),
             tree: self.tree.transform(
                 element,
-                VirtualNode::mount,
-                VirtualNode::update,
-                VirtualNode::unmount,
+                |node, index| VirtualNode::mount(node, GenericStateUpdater::new(&queue, index)),
+                |node, element, index| {
+                    VirtualNode::update(node, element, GenericStateUpdater::new(&queue, index))
+                },
+                |node, index| VirtualNode::unmount(node, GenericStateUpdater::new(&queue, index)),
             ),
-            update_queue: UpdateQueue::new(),
+            update_queue: queue,
         }
     }
 
@@ -152,8 +186,10 @@ where
     }
 
     pub fn unmount(self) {
-        self.tree
-            .unbuild(|node, _, index| VirtualNode::unmount(node, index));
+        let queue = self.update_queue;
+        self.tree.unbuild(|node, _, index| {
+            VirtualNode::unmount(node, GenericStateUpdater::new(&queue, index))
+        });
     }
 
     pub fn render(&self) -> Option<H::DomNode> {

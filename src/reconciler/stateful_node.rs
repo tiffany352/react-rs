@@ -3,7 +3,7 @@ use component::RenderContext;
 use element::Element;
 use element::{HostElement, StatefulElement};
 use flat_tree::NodeChildren;
-use flat_tree::NodeKey;
+use reconciler::GenericStateUpdater;
 use reconciler::{StatefulElementWrapper, VirtualNode};
 use std::any::Any;
 use std::clone::Clone;
@@ -22,13 +22,13 @@ where
 }
 
 pub trait StatefulNodeWrapper<H: HostElement> {
-    fn mount(&mut self, index: NodeKey<VirtualNode<H>>) -> Element<H>;
+    fn mount(&mut self, updater: GenericStateUpdater<H>) -> Element<H>;
     fn update(
         &mut self,
         element: Element<H>,
-        index: NodeKey<VirtualNode<H>>,
+        updater: GenericStateUpdater<H>,
     ) -> Result<Element<H>, Element<H>>;
-    fn unmount(&mut self, index: NodeKey<VirtualNode<H>>);
+    fn unmount(&mut self, updater: GenericStateUpdater<H>);
     fn render(&self, children: Vec<H::DomNode>) -> Option<H::DomNode>;
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -54,10 +54,11 @@ where
     H: HostElement,
     Class: Component<H> + 'static,
 {
-    fn mount(&mut self, index: NodeKey<VirtualNode<H>>) -> Element<H> {
+    fn mount(&mut self, updater: GenericStateUpdater<H>) -> Element<H> {
         let element = self.component.render(RenderContext {
             props: &self.props,
             state: self.state.as_ref().unwrap(),
+            updater: updater.specialize(),
         });
 
         self.component.did_mount();
@@ -68,7 +69,7 @@ where
     fn update(
         &mut self,
         element: Element<H>,
-        index: NodeKey<VirtualNode<H>>,
+        updater: GenericStateUpdater<H>,
     ) -> Result<Element<H>, Element<H>> {
         match element {
             Element::Host { .. } => Err(element),
@@ -85,6 +86,7 @@ where
                         let element = self.component.render(RenderContext {
                             props: &self.props,
                             state: self.state.as_ref().unwrap(),
+                            updater: updater.specialize(),
                         });
 
                         Ok(element)
@@ -96,7 +98,7 @@ where
         }
     }
 
-    fn unmount(&mut self, index: NodeKey<VirtualNode<H>>) {
+    fn unmount(&mut self, _updater: GenericStateUpdater<H>) {
         self.component.will_unmount();
     }
 
