@@ -1,4 +1,7 @@
 use element::{Element, HostElement};
+use flat_tree::FlatTree;
+use flat_tree::GetNodeChildren;
+use flat_tree::NodeChildren;
 use std::any::Any;
 use std::sync::{Arc, Mutex};
 
@@ -53,8 +56,27 @@ where
 }
 
 pub struct VirtualTree<H: HostElement> {
-    nodes: Vec<VirtualNode<H>>,
+    tree: FlatTree<VirtualNode<H>>,
     update_queue: UpdateQueue<H>,
+}
+
+impl<H> GetNodeChildren for VirtualNode<H>
+where
+    H: HostElement,
+{
+    fn get_children(&self) -> &NodeChildren<Self> {
+        match *self {
+            VirtualNode::Host(ref host_node) => &host_node.children,
+            VirtualNode::Stateful(ref stateful_node) => stateful_node.get_children(),
+        }
+    }
+
+    fn get_children_mut(&mut self) -> &mut NodeChildren<Self> {
+        match *self {
+            VirtualNode::Host(ref mut host_node) => &mut host_node.children,
+            VirtualNode::Stateful(ref mut stateful_node) => stateful_node.get_children_mut(),
+        }
+    }
 }
 
 impl<H> VirtualTree<H>
@@ -62,31 +84,33 @@ where
     H: HostElement,
 {
     pub fn mount(element: Element<H>) -> Self {
-        let mut nodes = vec![];
-        VirtualNode::mount(element, &mut nodes);
+        let tree = FlatTree::build(element, VirtualNode::mount);
 
         VirtualTree {
-            nodes: nodes,
+            tree: tree,
             update_queue: UpdateQueue::new(),
         }
     }
 
-    pub fn update(mut self, element: Element<H>) -> Self {
-        let root = self.nodes.pop().unwrap();
-        let mut new_nodes = vec![];
-        VirtualNode::update(root, element, &mut self.nodes, &mut new_nodes);
+    pub fn update(self, element: Element<H>) -> Self {
         VirtualTree {
-            nodes: new_nodes,
+            tree: self.tree.transform(
+                element,
+                VirtualNode::mount,
+                VirtualNode::update,
+                VirtualNode::unmount,
+            ),
             update_queue: UpdateQueue::new(),
         }
     }
 
-    pub fn unmount(mut self) {
-        let root = self.nodes.pop().unwrap();
-        VirtualNode::unmount(root, &mut self.nodes);
+    pub fn unmount(self) {
+        self.tree.unbuild(|node, _| VirtualNode::unmount(node));
     }
 
     pub fn render(&self) -> Option<H::DomNode> {
-        self.nodes.last().unwrap().render(&self.nodes)
+        self.tree.recurse(|node, children| {
+            node.render(children.into_iter().filter_map(|x| x).collect::<Vec<_>>())
+        })
     }
 }

@@ -1,6 +1,7 @@
 use component::Component;
 use element::Element;
 use element::{HostElement, StatefulElement};
+use flat_tree::NodeChildren;
 use reconciler::{StatefulElementWrapper, VirtualNode};
 use std::any::Any;
 use std::clone::Clone;
@@ -14,21 +15,18 @@ where
     component: Class,
     props: Class::Props,
     state: Option<Class::State>,
-    child: Option<usize>,
+    children: NodeChildren<VirtualNode<H>>,
     _phantom: PhantomData<H>,
 }
 
 pub trait StatefulNodeWrapper<H: HostElement> {
-    fn mount(&mut self, nodes: &mut Vec<VirtualNode<H>>);
-    fn update(
-        &mut self,
-        element: Element<H>,
-        old_nodes: &mut Vec<VirtualNode<H>>,
-        new_nodes: &mut Vec<VirtualNode<H>>,
-    ) -> Result<(), Element<H>>;
-    fn unmount(&mut self, nodes: &mut Vec<VirtualNode<H>>);
-    fn render(&self, nodes: &[VirtualNode<H>]) -> Option<H::DomNode>;
+    fn mount(&mut self) -> Element<H>;
+    fn update(&mut self, element: Element<H>) -> Result<Element<H>, Element<H>>;
+    fn unmount(&mut self);
+    fn render(&self, children: Vec<H::DomNode>) -> Option<H::DomNode>;
     fn as_any(&self) -> &dyn Any;
+    fn get_children(&self) -> &NodeChildren<VirtualNode<H>>;
+    fn get_children_mut(&mut self) -> &mut NodeChildren<VirtualNode<H>>;
 }
 
 impl<H, Class> StatefulNodeWrapper<H> for StatefulNode<H, Class>
@@ -36,22 +34,17 @@ where
     H: HostElement,
     Class: Component<H> + 'static,
 {
-    fn mount(&mut self, nodes: &mut Vec<VirtualNode<H>>) {
+    fn mount(&mut self) -> Element<H> {
         let element = self
             .component
             .render(&self.props, self.state.as_ref().unwrap());
 
-        self.child = Some(VirtualNode::mount(element, nodes));
-
         self.component.did_mount();
+
+        element
     }
 
-    fn update(
-        &mut self,
-        element: Element<H>,
-        old_nodes: &mut Vec<VirtualNode<H>>,
-        new_nodes: &mut Vec<VirtualNode<H>>,
-    ) -> Result<(), Element<H>> {
+    fn update(&mut self, element: Element<H>) -> Result<Element<H>, Element<H>> {
         match element {
             Element::Host { .. } => Err(element),
             Element::Stateful(element) => {
@@ -68,16 +61,7 @@ where
                             .component
                             .render(&self.props, self.state.as_ref().unwrap());
 
-                        if let Some(index) = self.child.take() {
-                            assert!(index + 1 == old_nodes.len());
-                            let child = old_nodes.pop().unwrap();
-                            self.child =
-                                Some(VirtualNode::update(child, element, old_nodes, new_nodes));
-                        } else {
-                            self.child = Some(VirtualNode::mount(element, new_nodes));
-                        }
-
-                        Ok(())
+                        Ok(element)
                     }
                     None => Err(()),
                 }
@@ -86,22 +70,25 @@ where
         }
     }
 
-    fn unmount(&mut self, nodes: &mut Vec<VirtualNode<H>>) {
+    fn unmount(&mut self) {
         self.component.will_unmount();
-
-        if let Some(index) = self.child.take() {
-            assert!(index + 1 == nodes.len());
-            let child = nodes.pop().unwrap();
-            VirtualNode::unmount(child, nodes);
-        }
     }
 
-    fn render(&self, nodes: &[VirtualNode<H>]) -> Option<H::DomNode> {
-        nodes[self.child?].render(nodes)
+    fn render(&self, mut children: Vec<H::DomNode>) -> Option<H::DomNode> {
+        assert!(children.len() <= 1);
+        children.pop()
     }
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn get_children(&self) -> &NodeChildren<VirtualNode<H>> {
+        &self.children
+    }
+
+    fn get_children_mut(&mut self) -> &mut NodeChildren<VirtualNode<H>> {
+        &mut self.children
     }
 }
 
@@ -117,7 +104,7 @@ where
             component: component,
             props: self.props.clone(),
             state: Some(initial_state),
-            child: None,
+            children: NodeChildren::new(),
             _phantom: PhantomData,
         })
     }

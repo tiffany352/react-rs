@@ -1,4 +1,5 @@
 use element::HostElement;
+use flat_tree::NodeChildren;
 use reconciler::virtual_node::VirtualNode;
 
 pub struct HostNode<H>
@@ -6,27 +7,21 @@ where
     H: HostElement,
 {
     pub element: H,
-    pub children: Vec<usize>,
+    pub children: NodeChildren<VirtualNode<H>>,
 }
 
 impl<H> HostNode<H>
 where
     H: HostElement,
 {
-    pub fn mount(element: H, children: Vec<usize>) -> HostNode<H> {
+    pub fn mount(element: H) -> HostNode<H> {
         HostNode {
             element: element,
-            children: children,
+            children: NodeChildren::new(),
         }
     }
 
-    pub fn render(&self, nodes: &[VirtualNode<H>]) -> Option<H::DomNode> {
-        let children = self
-            .children
-            .iter()
-            .filter_map(|index| nodes[*index].render(nodes))
-            .collect::<Vec<H::DomNode>>();
-
+    pub fn render(&self, children: Vec<H::DomNode>) -> Option<H::DomNode> {
         Some(H::new_dom_node(self.element.clone(), children))
     }
 }
