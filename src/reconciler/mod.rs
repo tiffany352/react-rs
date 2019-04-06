@@ -3,6 +3,7 @@ use element::{Element, HostElement};
 use flat_tree::FlatTree;
 use flat_tree::GetNodeChildren;
 use flat_tree::NodeChildren;
+use flat_tree::NodeKey;
 use reconciler::stateful_node::StatefulNode;
 use std::any::Any;
 use std::marker::PhantomData;
@@ -37,7 +38,7 @@ struct UpdateQueue<H: HostElement> {
 
 pub struct StateUpdater<H: HostElement, Class: Component<H>> {
     queue: UpdateQueue<H>,
-    node: usize,
+    node: NodeKey<VirtualNode<H>>,
     _phantom: PhantomData<Class>,
 }
 
@@ -52,7 +53,7 @@ where
     {
         let index = self.node;
         let mut func = Some(func);
-        self.queue.push(self.node, move |tree| {
+        self.queue.push(move |tree| {
             let node = tree.tree.get_mut(index);
             match node {
                 VirtualNode::Host(_) => panic!(),
@@ -78,7 +79,7 @@ where
         }
     }
 
-    pub fn push<Func: FnMut(&mut VirtualTree<H>) + 'static>(&self, node_index: usize, func: Func) {
+    pub fn push<Func: FnMut(&mut VirtualTree<H>) + 'static>(&self, func: Func) {
         self.queue.lock().unwrap().push(Box::new(func));
     }
 }
@@ -151,12 +152,15 @@ where
     }
 
     pub fn unmount(self) {
-        self.tree.unbuild(|node, _| VirtualNode::unmount(node));
+        self.tree
+            .unbuild(|node, _, index| VirtualNode::unmount(node, index));
     }
 
     pub fn render(&self) -> Option<H::DomNode> {
-        self.tree.recurse(|node, children| {
-            node.render(children.into_iter().filter_map(|x| x).collect::<Vec<_>>())
-        })
+        self.tree
+            .recurse(|node, children| {
+                node.render(children.into_iter().filter_map(|x| x).collect::<Vec<_>>())
+            })
+            .and_then(|x| x)
     }
 }

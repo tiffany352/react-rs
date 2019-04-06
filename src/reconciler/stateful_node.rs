@@ -3,6 +3,7 @@ use component::RenderContext;
 use element::Element;
 use element::{HostElement, StatefulElement};
 use flat_tree::NodeChildren;
+use flat_tree::NodeKey;
 use reconciler::{StatefulElementWrapper, VirtualNode};
 use std::any::Any;
 use std::clone::Clone;
@@ -21,9 +22,13 @@ where
 }
 
 pub trait StatefulNodeWrapper<H: HostElement> {
-    fn mount(&mut self) -> Element<H>;
-    fn update(&mut self, element: Element<H>) -> Result<Element<H>, Element<H>>;
-    fn unmount(&mut self);
+    fn mount(&mut self, index: NodeKey<VirtualNode<H>>) -> Element<H>;
+    fn update(
+        &mut self,
+        element: Element<H>,
+        index: NodeKey<VirtualNode<H>>,
+    ) -> Result<Element<H>, Element<H>>;
+    fn unmount(&mut self, index: NodeKey<VirtualNode<H>>);
     fn render(&self, children: Vec<H::DomNode>) -> Option<H::DomNode>;
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -49,7 +54,7 @@ where
     H: HostElement,
     Class: Component<H> + 'static,
 {
-    fn mount(&mut self) -> Element<H> {
+    fn mount(&mut self, index: NodeKey<VirtualNode<H>>) -> Element<H> {
         let element = self.component.render(RenderContext {
             props: &self.props,
             state: self.state.as_ref().unwrap(),
@@ -60,7 +65,11 @@ where
         element
     }
 
-    fn update(&mut self, element: Element<H>) -> Result<Element<H>, Element<H>> {
+    fn update(
+        &mut self,
+        element: Element<H>,
+        index: NodeKey<VirtualNode<H>>,
+    ) -> Result<Element<H>, Element<H>> {
         match element {
             Element::Host { .. } => Err(element),
             Element::Stateful(element) => {
@@ -87,7 +96,7 @@ where
         }
     }
 
-    fn unmount(&mut self) {
+    fn unmount(&mut self, index: NodeKey<VirtualNode<H>>) {
         self.component.will_unmount();
     }
 
