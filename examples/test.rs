@@ -1,5 +1,6 @@
 extern crate react_rs;
 
+use react_rs::RenderContext;
 use react_rs::{Component, Element, HostElement};
 
 // First, we need to define our "gui framework" to use. `react_rs` is
@@ -62,10 +63,10 @@ impl Component<WidgetElement> for Counter {
         (Counter, 0)
     }
 
-    fn render(&self, _props: &(), state: &usize) -> Element<WidgetElement> {
+    fn render(&self, ctx: RenderContext<WidgetElement, Self>) -> Element<WidgetElement> {
         Element::new_host(
             WidgetElement::Text(TextElement {
-                text: format!("{}", state),
+                text: format!("{}", ctx.state),
             }),
             vec![],
         )
@@ -82,13 +83,13 @@ impl Component<WidgetElement> for App {
         (App, ())
     }
 
-    fn render(&self, props: &String, _state: &()) -> Element<WidgetElement> {
+    fn render(&self, ctx: RenderContext<WidgetElement, Self>) -> Element<WidgetElement> {
         Element::new_host(
             WidgetElement::Div(DivElement {}),
             vec![
                 Element::new_host(
                     WidgetElement::Text(TextElement {
-                        text: props.to_owned(),
+                        text: ctx.props.to_owned(),
                     }),
                     vec![],
                 ),

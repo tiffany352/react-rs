@@ -1,8 +1,11 @@
+use component::Component;
 use element::{Element, HostElement};
 use flat_tree::FlatTree;
 use flat_tree::GetNodeChildren;
 use flat_tree::NodeChildren;
+use reconciler::stateful_node::StatefulNode;
 use std::any::Any;
+use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 mod host_node;
@@ -27,14 +30,41 @@ impl<H: HostElement> Clone for Box<StatefulElementWrapper<H>> {
     }
 }
 
-struct UpdateRequest<H: HostElement> {
-    node_index: usize,
-    func: Box<FnOnce(&mut VirtualNode<H>)>,
-}
-
 #[derive(Clone)]
 struct UpdateQueue<H: HostElement> {
-    queue: Arc<Mutex<Vec<UpdateRequest<H>>>>,
+    queue: Arc<Mutex<Vec<Box<FnOnce(&mut VirtualTree<H>)>>>>,
+}
+
+pub struct StateUpdater<H: HostElement, Class: Component<H>> {
+    queue: UpdateQueue<H>,
+    node: usize,
+    _phantom: PhantomData<Class>,
+}
+
+impl<H, Class> StateUpdater<H, Class>
+where
+    H: HostElement,
+    Class: Component<H> + 'static,
+{
+    pub fn set_state<Func>(&self, func: Func)
+    where
+        Func: FnOnce(Class::State) -> Class::State + 'static,
+    {
+        let index = self.node;
+        self.queue.push(self.node, move |tree| {
+            let node = tree.tree.get_mut(index);
+            match node {
+                VirtualNode::Host(_) => panic!(),
+                VirtualNode::Stateful(node) => {
+                    match node.as_any_mut().downcast_mut::<StatefulNode<H, Class>>() {
+                        Some(ref mut node) => node.update_state(func),
+                        None => panic!(),
+                    }
+                }
+            };
+            unimplemented!()
+        })
+    }
 }
 
 impl<H> UpdateQueue<H>
@@ -47,11 +77,8 @@ where
         }
     }
 
-    pub fn push<Func: FnOnce(&mut VirtualNode<H>) + 'static>(&self, node_index: usize, func: Func) {
-        self.queue.lock().unwrap().push(UpdateRequest {
-            node_index,
-            func: Box::new(func),
-        });
+    pub fn push<Func: FnOnce(&mut VirtualTree<H>) + 'static>(&self, node_index: usize, func: Func) {
+        self.queue.lock().unwrap().push(Box::new(func));
     }
 }
 

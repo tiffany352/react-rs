@@ -1,10 +1,17 @@
 use element::{Element, HostElement};
+//use reconciler::StateUpdater;
+
+pub struct RenderContext<'a, H: HostElement, Class: Component<H>> {
+    pub props: &'a Class::Props,
+    pub state: &'a Class::State,
+    //pub updater: StateUpdater<H, Class>,
+}
 
 pub trait Component<H: HostElement>: Sized {
     type Props: Clone;
     type State;
 
-    fn render(&self, props: &Self::Props, state: &Self::State) -> Element<H>;
+    fn render(&self, ctx: RenderContext<H, Self>) -> Element<H>;
 
     fn create(initial_props: &Self::Props) -> (Self, Self::State);
 

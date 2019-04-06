@@ -213,4 +213,12 @@ where
 
         new_tree
     }
+
+    pub fn get(&self, index: usize) -> &Item {
+        &self.items[index]
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> &mut Item {
+        &mut self.items[index]
+    }
 }
