@@ -8,6 +8,7 @@ use reconciler::{StatefulElementWrapper, VirtualNode};
 use std::any::Any;
 use std::clone::Clone;
 use std::marker::PhantomData;
+use toolshed::Arena;
 
 pub struct StatefulNode<H, Class>
 where
@@ -22,12 +23,17 @@ where
 }
 
 pub trait StatefulNodeWrapper<H: HostElement> {
-    fn mount(&mut self, updater: GenericStateUpdater<H>) -> Element<H>;
-    fn update(
+    fn mount<'arena>(
         &mut self,
-        element: Element<H>,
+        arena: &'arena Arena,
         updater: GenericStateUpdater<H>,
-    ) -> Result<Element<H>, Element<H>>;
+    ) -> &'arena Element<'arena, H>;
+    fn update<'arena>(
+        &mut self,
+        arena: &'arena Arena,
+        element: Element<'arena, H>,
+        updater: GenericStateUpdater<H>,
+    ) -> Result<&'arena Element<'arena, H>, Element<'arena, H>>;
     fn unmount(&mut self, updater: GenericStateUpdater<H>);
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -53,11 +59,16 @@ where
     H: HostElement,
     Class: Component<H> + 'static,
 {
-    fn mount(&mut self, updater: GenericStateUpdater<H>) -> Element<H> {
+    fn mount<'arena>(
+        &mut self,
+        arena: &'arena Arena,
+        updater: GenericStateUpdater<H>,
+    ) -> &'arena Element<'arena, H> {
         let element = self.component.render(RenderContext {
             props: &self.props,
             state: self.state.as_ref().unwrap(),
             updater: updater.specialize(),
+            arena: arena,
         });
 
         self.component.did_mount();
@@ -65,14 +76,16 @@ where
         element
     }
 
-    fn update(
+    fn update<'arena>(
         &mut self,
-        element: Element<H>,
+        arena: &'arena Arena,
+        element: Element<'arena, H>,
         updater: GenericStateUpdater<H>,
-    ) -> Result<Element<H>, Element<H>> {
+    ) -> Result<&'arena Element<'arena, H>, Element<'arena, H>> {
         match element {
             Element::Host { .. } => Err(element),
             Element::Stateful(element) => {
+                element.apply_to(self);
                 match element.as_any().downcast_ref::<StatefulElement<H, Class>>() {
                     Some(element) => {
                         self.props = element.props.clone();
@@ -86,6 +99,7 @@ where
                             props: &self.props,
                             state: self.state.as_ref().unwrap(),
                             updater: updater.specialize(),
+                            arena: arena,
                         });
 
                         Ok(element)
@@ -118,10 +132,11 @@ where
     }
 }
 
-impl<H, Class> StatefulElementWrapper<H> for StatefulElement<H, Class>
+impl<'arena, H, Class> StatefulElementWrapper<H> for StatefulElement<H, Class>
 where
     H: HostElement,
-    Class: Component<H> + 'static,
+    Class: Component<H> + 'arena,
+    Class::Props: 'arena,
 {
     fn create_node(&self) -> Box<dyn StatefulNodeWrapper<H>> {
         let (component, initial_state) = Class::create(&self.props);
@@ -135,7 +150,9 @@ where
         })
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
+    fn apply_to(&self, node: &mut dyn StatefulNodeWrapper<H>) {
+        match node.as_any().downcast_mut::<StatefulNode<H, Class>>() {
+            Some(node) => {}
+        }
     }
 }

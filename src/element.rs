@@ -1,6 +1,6 @@
 use component::Component;
 use reconciler::StatefulElementWrapper;
-use std::marker::PhantomData;
+use toolshed::Arena;
 
 pub trait DomNode<'a>
 where
@@ -11,48 +11,63 @@ where
     fn new_dom_node(h: &'a Self::Widget, children: Vec<Self>) -> Self;
 }
 
-pub trait HostElement: 'static + Sized {}
+pub trait HostElement: Sized + Clone + Copy {}
 
-pub enum Element<H: HostElement> {
+#[derive(Copy, Clone)]
+pub enum Element<'arena, H: HostElement> {
     Host {
         element: H,
-        children: Vec<Element<H>>,
+        children: &'arena [&'arena Element<'arena, H>],
     },
-    Stateful(Box<dyn StatefulElementWrapper<H>>),
+    Stateful(&'arena dyn StatefulElementWrapper<H>),
 }
 
 pub struct StatefulElement<H: HostElement, Class: Component<H>> {
     pub props: Class::Props,
-    _phantom: PhantomData<(H, Class)>,
 }
 
-impl<H: HostElement> Element<H> {
-    pub fn new_host(elt: H, children: Vec<Element<H>>) -> Element<H> {
-        Element::Host {
+impl<H, Class> Clone for StatefulElement<H, Class>
+where
+    H: HostElement,
+    Class: Component<H>,
+{
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<H, Class> Copy for StatefulElement<H, Class>
+where
+    H: HostElement,
+    Class: Component<H>,
+{
+}
+
+impl<'arena, H> Element<'arena, H>
+where
+    H: HostElement + 'arena,
+{
+    pub fn new_host(
+        arena: &'arena Arena,
+        elt: H,
+        children: &[&'arena Element<'arena, H>],
+    ) -> &'arena Element<'arena, H> {
+        arena.alloc(Element::Host {
             element: elt,
-            children: children,
-        }
+            children: arena.alloc_slice(children),
+        })
     }
 
-    pub fn new_functional<F, Props>(
-        _func: F,
-        _props: Props,
-        _children: Vec<Element<H>>,
-    ) -> Element<H>
+    pub fn new_stateful<Class>(
+        arena: &'arena Arena,
+        props: Class::Props,
+    ) -> &'arena Element<'arena, H>
     where
-        F: Fn(&Props, &[Element<H>]) -> Element<H> + 'static,
-        Props: 'static,
+        Class: Component<H> + 'arena,
+        Class::Props: 'arena,
     {
-        unimplemented!()
-    }
-
-    pub fn new_stateful<Class>(props: Class::Props) -> Element<H>
-    where
-        Class: Component<H> + 'static,
-    {
-        Element::Stateful(Box::new(StatefulElement {
-            props: props,
-            _phantom: PhantomData::<(H, Class)>,
-        }))
+        let element: &'arena StatefulElement<H, Class> =
+            arena.alloc(StatefulElement { props: props });
+        arena.alloc(Element::Stateful(element))
     }
 }

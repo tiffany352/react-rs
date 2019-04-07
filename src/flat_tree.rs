@@ -86,17 +86,21 @@ where
         self.items.insert(key, item);
     }
 
-    fn build_inner<Value, Func>(&mut self, root: Value, create_node: &mut Func) -> NodeKey<Item>
+    fn build_inner<Value, Func, Iter>(
+        &mut self,
+        root: Value,
+        create_node: &mut Func,
+    ) -> NodeKey<Item>
     where
-        Func: FnMut(Value, NodeKey<Item>) -> (Item, Vec<Value>),
+        Func: FnMut(Value, NodeKey<Item>) -> (Item, Iter),
+        Iter: Iterator<Item = Value>,
     {
         let key = self.reserve();
 
-        let (mut item, children) = create_node(root, key);
+        let (mut item, children_iter) = create_node(root, key);
 
-        let children = children
-            .into_iter()
-            .map(|child| self.build_inner(child, create_node))
+        let children = children_iter
+            .map(|child: Value| self.build_inner(child, create_node))
             .collect::<Vec<_>>();
 
         item.get_children_mut().children = children;
@@ -106,9 +110,10 @@ where
         key
     }
 
-    pub fn build<Value, Func>(root: Value, mut create_node: Func) -> FlatTree<Item>
+    pub fn build<Value, Func, Iter>(root: Value, mut create_node: Func) -> FlatTree<Item>
     where
-        Func: FnMut(Value, NodeKey<Item>) -> (Item, Vec<Value>),
+        Func: FnMut(Value, NodeKey<Item>) -> (Item, Iter),
+        Iter: Iterator<Item = Value>,
     {
         let mut tree = FlatTree::new();
 
@@ -202,7 +207,7 @@ where
         }
     }
 
-    pub fn transform_inner<Value, MountItem, UpdateItem, UnmountItem>(
+    pub fn transform_inner<Value, MountItem, UpdateItem, UnmountItem, Iter1, Iter2>(
         old_tree: &mut FlatTree<Item>,
         new_tree: &mut FlatTree<Item>,
         item_key: NodeKey<Item>,
@@ -212,9 +217,11 @@ where
         unmount_item: &mut UnmountItem,
     ) -> NodeKey<Item>
     where
-        MountItem: FnMut(Value, NodeKey<Item>) -> (Item, Vec<Value>),
-        UpdateItem: FnMut(Item, Value, NodeKey<Item>) -> (Item, Vec<Value>),
+        MountItem: FnMut(Value, NodeKey<Item>) -> (Item, Iter1),
+        UpdateItem: FnMut(Item, Value, NodeKey<Item>) -> (Item, Iter2),
         UnmountItem: FnMut(Item, NodeKey<Item>),
+        Iter1: Iterator<Item = Value>,
+        Iter2: Iterator<Item = Value>,
     {
         let mut item = old_tree.items.remove(&item_key).unwrap();
         let previous_children = item
@@ -274,7 +281,7 @@ where
         item_key
     }
 
-    pub fn transform<Value, MountItem, UpdateItem, UnmountItem>(
+    pub fn transform<Value, MountItem, UpdateItem, UnmountItem, Iter1, Iter2>(
         mut self,
         value: Value,
         mut mount_item: MountItem,
@@ -282,9 +289,11 @@ where
         mut unmount_item: UnmountItem,
     ) -> FlatTree<Item>
     where
-        MountItem: FnMut(Value, NodeKey<Item>) -> (Item, Vec<Value>),
-        UpdateItem: FnMut(Item, Value, NodeKey<Item>) -> (Item, Vec<Value>),
+        MountItem: FnMut(Value, NodeKey<Item>) -> (Item, Iter1),
+        UpdateItem: FnMut(Item, Value, NodeKey<Item>) -> (Item, Iter2),
         UnmountItem: FnMut(Item, NodeKey<Item>),
+        Iter1: Iterator<Item = Value>,
+        Iter2: Iterator<Item = Value>,
     {
         let mut new_tree = FlatTree::new();
         new_tree.next_key = self.next_key;

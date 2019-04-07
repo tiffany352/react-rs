@@ -1,5 +1,6 @@
 extern crate react_rs;
 
+use react_rs::toolshed::CopyCell;
 use react_rs::DomNode;
 use react_rs::RenderContext;
 use react_rs::{Component, Element, HostElement};
@@ -12,45 +13,46 @@ use std::fmt;
 /// The thing that should be reified to - can be either a virtual node
 /// to be reconciled, or directly passed to a renderer.
 #[derive(Debug)]
-pub struct Widget<'a> {
+pub struct Widget<'arena> {
     pub class: &'static str,
     // Just for debugging.
-    pub element: &'a WidgetElement,
+    pub element: &'arena WidgetElement<'arena>,
     // N.B. the type of the children array.
-    pub children: Vec<Widget<'a>>,
+    pub children: Vec<Widget<'arena>>,
 }
 
 /// A description of a widget, which will be reified into a virtual node.
-#[derive(Debug)]
-pub enum WidgetElement {
-    Div(DivElement),
-    Text(TextElement),
+#[derive(Debug, Clone, Copy)]
+pub enum WidgetElement<'arena> {
+    Div(DivElement<'arena>),
+    Text(TextElement<'arena>),
 }
 
-pub struct Callback(Option<Box<RefCell<dyn FnMut()>>>);
+#[derive(Clone, Copy)]
+pub struct Callback<'arena>(Option<&'arena dyn FnMut()>);
 
-impl fmt::Debug for Callback {
+impl<'arena> fmt::Debug for Callback<'arena> {
     fn fmt(&self, _fmt: &mut fmt::Formatter) -> fmt::Result {
         Ok(())
     }
 }
 
 /// Obligatory container element.
-#[derive(Debug)]
-pub struct DivElement {
-    pub on_poke: Callback,
+#[derive(Debug, Clone, Copy)]
+pub struct DivElement<'arena> {
+    pub on_poke: Callback<'arena>,
 }
 
 /// Text label element.
-#[derive(Debug)]
-pub struct TextElement {
-    pub text: String,
+#[derive(Debug, Clone, Copy)]
+pub struct TextElement<'arena> {
+    pub text: &'arena str,
 }
 
-impl<'a> DomNode<'a> for Widget<'a> {
-    type Widget = WidgetElement;
+impl<'arena> DomNode<'arena> for Widget<'arena> {
+    type Widget = WidgetElement<'arena>;
 
-    fn new_dom_node(element: &'a WidgetElement, children: Vec<Self>) -> Self {
+    fn new_dom_node(element: &'arena WidgetElement, children: Vec<Self>) -> Self {
         Widget {
             class: match element {
                 WidgetElement::Div(_) => "div",
@@ -63,14 +65,14 @@ impl<'a> DomNode<'a> for Widget<'a> {
 }
 
 /// Called by the reifier when reifying elements into virtual nodes.
-impl HostElement for WidgetElement {}
+impl<'arena> HostElement for WidgetElement<'arena> {}
 
 // And now we construct an example "app" using our test gui framework
 // from above.
 
 pub struct Counter;
 
-impl Component<WidgetElement> for Counter {
+impl<'arena> Component<WidgetElement<'arena>> for Counter {
     type Props = ();
     type State = usize;
 
@@ -78,19 +80,23 @@ impl Component<WidgetElement> for Counter {
         (Counter, 0)
     }
 
-    fn render(&self, ctx: RenderContext<WidgetElement, Self>) -> Element<WidgetElement> {
+    fn render(
+        &self,
+        ctx: RenderContext<'_, 'arena, WidgetElement<'arena>, Self>,
+    ) -> &'arena Element<'arena, WidgetElement<'arena>> {
         let updater = ctx.updater;
-        Element::new_host(
+        ctx.new_host_element(
             WidgetElement::Text(TextElement {
-                text: format!("{}", ctx.state),
+                text: ctx.arena.alloc_string(format!("{}", ctx.state)),
             }),
-            vec![Element::new_host(
+            &[ctx.new_host_element(
                 WidgetElement::Div(DivElement {
-                    on_poke: Callback(Some(Box::new(RefCell::new(move || {
-                        updater.set_state(|old_state| old_state + 1)
-                    })))),
+                    on_poke: Callback(Some(
+                        ctx.arena
+                            .alloc(move || updater.set_state(|old_state| old_state + 1)),
+                    )),
                 }),
-                vec![],
+                &[],
             )],
         )
     }
@@ -98,40 +104,44 @@ impl Component<WidgetElement> for Counter {
 
 pub struct App;
 
-impl Component<WidgetElement> for App {
-    type Props = String;
+impl<'arena> Component<WidgetElement<'arena>> for App {
+    type Props = &'arena str;
     type State = ();
 
-    fn create(_initial_props: &String) -> (App, ()) {
+    fn create(_initial_props: Self::Props) -> (App, ()) {
         (App, ())
     }
 
-    fn render(&self, ctx: RenderContext<WidgetElement, Self>) -> Element<WidgetElement> {
-        Element::new_host(
+    fn render(
+        &self,
+        ctx: RenderContext<'_, 'arena, WidgetElement<'arena>, Self>,
+    ) -> &'arena Element<'arena, WidgetElement<'arena>> {
+        ctx.new_host_element(
             WidgetElement::Div(DivElement {
                 on_poke: Callback(None),
             }),
-            vec![
-                Element::new_host(
+            &[
+                ctx.new_host_element(
                     WidgetElement::Text(TextElement {
-                        text: ctx.props.to_owned(),
+                        text: ctx.arena.alloc_str(ctx.props),
                     }),
-                    vec![],
+                    &[],
                 ),
-                Element::new_stateful::<Counter>(()),
+                ctx.new_stateful_element::<Counter>(()),
             ],
         )
     }
 }
 
 fn main() {
-    let element = Element::new_stateful::<App>("App".to_owned());
-    let tree = react_rs::VirtualTree::<WidgetElement>::mount(element);
+    let tree = react_rs::VirtualTree::<WidgetElement>::mount(|arena| {
+        Element::new_stateful::<App>(arena, "App")
+    });
 
     {
         let node = tree.render::<Widget>();
         println!("{:#?}", node);
-        let poke: &RefCell<dyn FnMut()> = match node.as_ref() {
+        let poke: &dyn FnMut() = match node.as_ref() {
             Some(Widget { children, .. }) => match children[1].children[0].element {
                 WidgetElement::Div(DivElement {
                     on_poke: Callback(Some(poke)),
@@ -140,9 +150,7 @@ fn main() {
             },
             _ => panic!(),
         };
-        let mut borrow = poke.borrow_mut();
-        let func: &mut dyn FnMut() = &mut *borrow;
-        (*func)();
+        (*poke)();
     }
 
     let element = Element::new_stateful::<App>("App".to_owned());

@@ -5,10 +5,9 @@ use flat_tree::FlatTree;
 use flat_tree::GetNodeChildren;
 use flat_tree::NodeChildren;
 use flat_tree::NodeKey;
-use reconciler::stateful_node::StatefulNode;
-use std::any::Any;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
+use toolshed::Arena;
 
 mod host_node;
 mod stateful_node;
@@ -18,10 +17,10 @@ pub use self::host_node::HostNode;
 pub use self::stateful_node::StatefulNodeWrapper;
 pub use self::virtual_node::VirtualNode;
 
-pub trait StatefulElementWrapper<H: HostElement>: Any {
+pub trait StatefulElementWrapper<H: HostElement> {
     fn create_node(&self) -> Box<dyn StatefulNodeWrapper<H>>;
 
-    fn as_any(&self) -> &dyn Any;
+    fn apply_to(&self, node: &mut dyn StatefulNodeWrapper<H>);
 }
 
 struct UpdateQueue<H: HostElement> {
@@ -96,7 +95,7 @@ where
     {
         let index = self.node;
         let mut func = Some(func);
-        self.queue.push(move |tree| {
+        /*self.queue.push(move |tree| {
             let node = tree.tree.get_mut(index);
             match node {
                 VirtualNode::Host(_) => panic!(),
@@ -107,7 +106,7 @@ where
                     }
                 }
             }
-        })
+        })*/
     }
 }
 
@@ -150,14 +149,21 @@ where
     }
 }
 
-impl<H> VirtualTree<H>
+impl<'arena, H> VirtualTree<H>
 where
-    H: HostElement,
+    H: HostElement + 'arena,
 {
-    pub fn mount(element: Element<H>) -> Self {
+    pub fn mount<Func>(func: Func) -> Self
+    where
+        Func: FnOnce(&'arena Arena) -> &'arena Element<'arena, H>,
+    {
+        let arena = Arena::new();
+        let element = func(&arena);
         let queue = UpdateQueue::new();
-        let tree = FlatTree::build(element, |node, index| {
-            VirtualNode::mount(node, GenericStateUpdater::new(&queue, index))
+        let tree = FlatTree::build::<&Element<H>, _, _>(element, |node: &Element<H>, index| {
+            let (node, elts) =
+                VirtualNode::mount(&arena, *node, GenericStateUpdater::new(&queue, index));
+            (node, elts.into_iter().cloned())
         });
 
         VirtualTree {
@@ -167,6 +173,7 @@ where
     }
 
     pub fn update(mut self, element: Element<H>) -> Self {
+        let arena = Arena::new();
         let items = {
             let mut guard = self.update_queue.queue.lock().unwrap();
             let items = guard
@@ -180,11 +187,24 @@ where
 
         let queue = self.update_queue;
         VirtualTree {
-            tree: self.tree.transform(
-                element,
-                |node, index| VirtualNode::mount(node, GenericStateUpdater::new(&queue, index)),
+            tree: self.tree.transform::<&Element<H>, _, _, _, _, _>(
+                &element,
+                |element, index| {
+                    let (node, elts) = VirtualNode::mount(
+                        &arena,
+                        *element,
+                        GenericStateUpdater::new(&queue, index),
+                    );
+                    (node, elts.into_iter().cloned())
+                },
                 |node, element, index| {
-                    VirtualNode::update(node, element, GenericStateUpdater::new(&queue, index))
+                    let (node, elts) = VirtualNode::update(
+                        &arena,
+                        node,
+                        *element,
+                        GenericStateUpdater::new(&queue, index),
+                    );
+                    (node, elts.into_iter().cloned())
                 },
                 |node, index| VirtualNode::unmount(node, GenericStateUpdater::new(&queue, index)),
             ),
