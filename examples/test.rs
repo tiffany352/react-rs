@@ -21,7 +21,7 @@ pub struct Widget<'a> {
 }
 
 /// A description of a widget, which will be reified into a virtual node.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum WidgetElement {
     Div(DivElement),
     Text(TextElement),
@@ -35,14 +35,20 @@ impl fmt::Debug for Callback {
     }
 }
 
+impl PartialEq for Callback {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+
 /// Obligatory container element.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct DivElement {
     pub on_poke: Callback,
 }
 
 /// Text label element.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct TextElement {
     pub text: String,
 }
@@ -126,7 +132,7 @@ impl Component<WidgetElement> for App {
 
 fn main() {
     let element = Element::new_stateful::<App>("App".to_owned());
-    let tree = react_rs::VirtualTree::<WidgetElement>::mount(element);
+    let mut tree = react_rs::VirtualTree::<WidgetElement>::mount(element);
 
     {
         let node = tree.render::<Widget>();
@@ -145,8 +151,16 @@ fn main() {
         (*func)();
     }
 
-    let element = Element::new_stateful::<App>("App".to_owned());
-    let tree = tree.update(element);
+    //let element = Element::new_stateful::<App>("App".to_owned());
+    tree.flush();
+
+    {
+        let node = tree.render::<Widget>();
+        println!("{:#?}", node);
+    }
+
+    let element = Element::new_stateful::<App>("App 2.0".to_owned());
+    tree.update(element);
 
     {
         let node = tree.render::<Widget>();

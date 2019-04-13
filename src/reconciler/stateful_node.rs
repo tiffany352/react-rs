@@ -27,7 +27,7 @@ pub trait StatefulNodeWrapper<H: HostElement> {
         &mut self,
         element: Element<H>,
         updater: GenericStateUpdater<H>,
-    ) -> Result<Element<H>, Element<H>>;
+    ) -> Result<Option<Element<H>>, Element<H>>;
     fn unmount(&mut self, updater: GenericStateUpdater<H>);
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -40,11 +40,17 @@ where
     H: HostElement,
     Class: Component<H> + 'static,
 {
-    pub fn update_state<Func>(&mut self, func: Func)
+    pub fn update_state<Func>(&mut self, func: Func, updater: GenericStateUpdater<H>) -> Element<H>
     where
         Func: FnOnce(Class::State) -> Class::State,
     {
-        self.state = Some((func)(self.state.take().unwrap()))
+        self.state = Some((func)(self.state.take().unwrap()));
+        let element = self.component.render(RenderContext {
+            props: &self.props,
+            state: self.state.as_ref().unwrap(),
+            updater: updater.specialize(),
+        });
+        element
     }
 }
 
@@ -69,26 +75,30 @@ where
         &mut self,
         element: Element<H>,
         updater: GenericStateUpdater<H>,
-    ) -> Result<Element<H>, Element<H>> {
+    ) -> Result<Option<Element<H>>, Element<H>> {
         match element {
             Element::Host { .. } => Err(element),
             Element::Stateful(element) => {
                 match element.as_any().downcast_ref::<StatefulElement<H, Class>>() {
                     Some(element) => {
-                        self.props = element.props.clone();
+                        if self.props != element.props {
+                            self.props = element.props.clone();
 
-                        self.state = Some(Class::get_derived_state_from_props(
-                            &self.props,
-                            self.state.take().unwrap(),
-                        ));
+                            self.state = Some(Class::get_derived_state_from_props(
+                                &self.props,
+                                self.state.take().unwrap(),
+                            ));
 
-                        let element = self.component.render(RenderContext {
-                            props: &self.props,
-                            state: self.state.as_ref().unwrap(),
-                            updater: updater.specialize(),
-                        });
+                            let element = self.component.render(RenderContext {
+                                props: &self.props,
+                                state: self.state.as_ref().unwrap(),
+                                updater: updater.specialize(),
+                            });
 
-                        Ok(element)
+                            Ok(Some(element))
+                        } else {
+                            Ok(None)
+                        }
                     }
                     None => Err(()),
                 }

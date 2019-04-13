@@ -202,9 +202,8 @@ where
         }
     }
 
-    pub fn transform_inner<Value, MountItem, UpdateItem, UnmountItem>(
-        old_tree: &mut FlatTree<Item>,
-        new_tree: &mut FlatTree<Item>,
+    pub fn update_subtree<Value, MountItem, UpdateItem, UnmountItem>(
+        &mut self,
         item_key: NodeKey<Item>,
         value: Value,
         mount_item: &mut MountItem,
@@ -213,10 +212,10 @@ where
     ) -> NodeKey<Item>
     where
         MountItem: FnMut(Value, NodeKey<Item>) -> (Item, Vec<Value>),
-        UpdateItem: FnMut(Item, Value, NodeKey<Item>) -> (Item, Vec<Value>),
+        UpdateItem: FnMut(Item, Value, NodeKey<Item>) -> (Item, Option<Vec<Value>>),
         UnmountItem: FnMut(Item, NodeKey<Item>),
     {
-        let mut item = old_tree.items.remove(&item_key).unwrap();
+        let mut item = self.items.remove(&item_key).unwrap();
         let previous_children = item
             .get_children_mut()
             .children
@@ -225,83 +224,79 @@ where
 
         let (mut item, child_values) = update_item(item, value, item_key);
 
-        let mut child_indices = previous_children
-            .into_iter()
-            .map(Some)
-            .chain(repeat_with(|| None))
-            .zip(
-                child_values
-                    .into_iter()
-                    .map(Some)
-                    .chain(repeat_with(|| None)),
-            )
-            .take_while(|(child_index, child_value)| child_index.is_some() && child_value.is_some())
-            .collect::<Vec<_>>()
-            .into_iter()
-            .filter_map(
-                |(child_index, child_value)| match (child_index, child_value) {
-                    // Update
-                    (Some(child_index), Some(child_value)) => Some(FlatTree::transform_inner(
-                        old_tree,
-                        new_tree,
-                        child_index,
-                        child_value,
-                        mount_item,
-                        update_item,
-                        unmount_item,
-                    )),
-                    // Mount
-                    (None, Some(child_value)) => {
-                        Some(new_tree.build_inner(child_value, mount_item))
-                    }
-                    // Unmount
-                    (Some(child_index), None) => {
-                        old_tree.unbuild_inner(child_index, &mut |item, _, key| {
-                            unmount_item(item, key)
-                        });
-                        None
-                    }
-                    // Unreachable
-                    (None, None) => None,
-                },
-            )
-            .collect::<Vec<NodeKey<Item>>>();
-        child_indices.reverse();
+        if let Some(child_values) = child_values {
+            let mut child_indices = previous_children
+                .into_iter()
+                .map(Some)
+                .chain(repeat_with(|| None))
+                .zip(
+                    child_values
+                        .into_iter()
+                        .map(Some)
+                        .chain(repeat_with(|| None)),
+                )
+                .take_while(|(child_index, child_value)| {
+                    child_index.is_some() && child_value.is_some()
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .filter_map(
+                    |(child_index, child_value)| match (child_index, child_value) {
+                        // Update
+                        (Some(child_index), Some(child_value)) => Some(FlatTree::update_subtree(
+                            self,
+                            child_index,
+                            child_value,
+                            mount_item,
+                            update_item,
+                            unmount_item,
+                        )),
+                        // Mount
+                        (None, Some(child_value)) => {
+                            Some(self.build_inner(child_value, mount_item))
+                        }
+                        // Unmount
+                        (Some(child_index), None) => {
+                            self.unbuild_inner(child_index, &mut |item, _, key| {
+                                unmount_item(item, key)
+                            });
+                            None
+                        }
+                        // Unreachable
+                        (None, None) => None,
+                    },
+                )
+                .collect::<Vec<NodeKey<Item>>>();
 
-        item.get_children_mut().children = child_indices;
+            item.get_children_mut().children = child_indices;
+        } else {
+            item.get_children_mut().children = previous_children;
+        }
 
-        new_tree.insert(item_key, item);
+        self.insert(item_key, item);
         item_key
     }
 
-    pub fn transform<Value, MountItem, UpdateItem, UnmountItem>(
-        mut self,
+    pub fn update_tree<Value, MountItem, UpdateItem, UnmountItem>(
+        &mut self,
         value: Value,
-        mut mount_item: MountItem,
-        mut update_item: UpdateItem,
-        mut unmount_item: UnmountItem,
-    ) -> FlatTree<Item>
-    where
+        mount_item: &mut MountItem,
+        update_item: &mut UpdateItem,
+        unmount_item: &mut UnmountItem,
+    ) where
         MountItem: FnMut(Value, NodeKey<Item>) -> (Item, Vec<Value>),
-        UpdateItem: FnMut(Item, Value, NodeKey<Item>) -> (Item, Vec<Value>),
+        UpdateItem: FnMut(Item, Value, NodeKey<Item>) -> (Item, Option<Vec<Value>>),
         UnmountItem: FnMut(Item, NodeKey<Item>),
     {
-        let mut new_tree = FlatTree::new();
-        new_tree.next_key = self.next_key;
-
-        if let Some(root_key) = self.root {
-            new_tree.root = Some(FlatTree::transform_inner(
-                &mut self,
-                &mut new_tree,
-                root_key,
-                value,
-                &mut mount_item,
-                &mut update_item,
-                &mut unmount_item,
-            ));
+        if let Some(root) = self.root {
+            self.update_subtree(root, value, mount_item, update_item, unmount_item);
+        } else {
+            self.build_inner(value, mount_item);
         }
+    }
 
-        new_tree
+    pub fn get_children(&self, index: NodeKey<Item>) -> &[NodeKey<Item>] {
+        &self.items.get(&index).unwrap().get_children().children[..]
     }
 
     pub fn get(&self, index: NodeKey<Item>) -> &Item {

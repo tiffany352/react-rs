@@ -11,7 +11,7 @@ where
     fn new_dom_node(h: &'a Self::Widget, children: Vec<Self>) -> Self;
 }
 
-pub trait HostElement: 'static + Sized {}
+pub trait HostElement: 'static + Sized + PartialEq {}
 
 pub enum Element<H: HostElement> {
     Host {

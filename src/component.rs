@@ -8,7 +8,7 @@ pub struct RenderContext<'a, H: HostElement, Class: Component<H>> {
 }
 
 pub trait Component<H: HostElement>: Sized {
-    type Props: Clone;
+    type Props: Clone + PartialEq;
     type State;
 
     fn render(&self, ctx: RenderContext<H, Self>) -> Element<H>;

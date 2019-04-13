@@ -33,27 +33,37 @@ where
         node: VirtualNode<H>,
         element: Element<H>,
         updater: GenericStateUpdater<H>,
-    ) -> (VirtualNode<H>, Vec<Element<H>>) {
+    ) -> (VirtualNode<H>, Option<Vec<Element<H>>>) {
         match (node, element) {
             (
                 VirtualNode::Host(HostNode {
-                    element: _,
+                    element: old_element,
                     children,
                 }),
                 Element::Host {
-                    element,
+                    element: new_element,
                     children: element_children,
                 },
-            ) => (
-                VirtualNode::Host(HostNode { element, children }),
-                element_children,
-            ),
+            ) => {
+                let should_update = old_element != new_element;
+                let node = VirtualNode::Host(HostNode {
+                    element: new_element,
+                    children,
+                });
+                if should_update {
+                    (node, Some(element_children))
+                } else {
+                    (node, None)
+                }
+            }
             (VirtualNode::Stateful(mut node), element) => {
                 match node.update(element, updater.clone()) {
-                    Ok(element) => (VirtualNode::Stateful(node), vec![element]),
+                    Ok(Some(element)) => (VirtualNode::Stateful(node), Some(vec![element])),
+                    Ok(None) => (VirtualNode::Stateful(node), None),
                     Err(element) => {
                         node.unmount(updater.clone());
-                        VirtualNode::mount(element, updater)
+                        let (node, children) = VirtualNode::mount(element, updater);
+                        (node, Some(children))
                     }
                 }
             }
@@ -61,7 +71,8 @@ where
                 // If they're not compatible, we have to unmount and
                 // remount.
                 VirtualNode::unmount(old_node, updater.clone());
-                VirtualNode::mount(new_element, updater)
+                let (node, children) = VirtualNode::mount(new_element, updater);
+                (node, Some(children))
             }
         }
     }
