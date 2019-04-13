@@ -107,6 +107,7 @@ where
         self.queue.push(move |tree| {
             let element = match tree.tree.get_mut(index) {
                 VirtualNode::Host(_) => panic!(),
+                VirtualNode::Fragment(_) => panic!(),
                 VirtualNode::Stateful(node) => {
                     match node.as_any_mut().downcast_mut::<StatefulNode<H, Class>>() {
                         Some(ref mut node) => {
@@ -152,6 +153,7 @@ where
         match *self {
             VirtualNode::Host(ref host_node) => &host_node.children,
             VirtualNode::Stateful(ref stateful_node) => stateful_node.get_children(),
+            VirtualNode::Fragment(ref children) => children,
         }
     }
 
@@ -159,6 +161,7 @@ where
         match *self {
             VirtualNode::Host(ref mut host_node) => &mut host_node.children,
             VirtualNode::Stateful(ref mut stateful_node) => stateful_node.get_children_mut(),
+            VirtualNode::Fragment(ref mut children) => children,
         }
     }
 }
@@ -230,10 +233,13 @@ where
     where
         Dom: DomNode<'a, Widget = H>,
     {
-        self.tree
+        let result = self
+            .tree
             .recurse(|node, children| {
-                node.render(children.into_iter().filter_map(|x| x).collect::<Vec<_>>())
+                node.render(children.into_iter().flatten().collect::<Vec<Dom>>())
             })
-            .and_then(|x| x)
+            .unwrap_or(vec![]);
+        assert!(result.len() <= 1);
+        result.into_iter().next()
     }
 }

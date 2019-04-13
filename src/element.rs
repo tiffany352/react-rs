@@ -19,6 +19,7 @@ pub enum Element<H: HostElement> {
         children: Vec<Element<H>>,
     },
     Stateful(Box<dyn StatefulElementWrapper<H>>),
+    Fragment(Vec<Element<H>>),
 }
 
 pub struct StatefulElement<H: HostElement, Class: Component<H>> {
@@ -32,6 +33,10 @@ impl<H: HostElement> Element<H> {
             element: elt,
             children: children,
         }
+    }
+
+    pub fn new_fragment(children: Vec<Element<H>>) -> Element<H> {
+        Element::Fragment(children)
     }
 
     pub fn new_functional<F, Props>(

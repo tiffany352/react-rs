@@ -96,7 +96,28 @@ impl Component<WidgetElement> for Counter {
                         updater.set_state(|old_state| old_state + 1)
                     })))),
                 }),
-                vec![],
+                vec![
+                    Element::new_host(
+                        WidgetElement::Text(TextElement {
+                            text: "first child".to_owned(),
+                        }),
+                        vec![],
+                    ),
+                    Element::new_fragment(vec![
+                        Element::new_host(
+                            WidgetElement::Text(TextElement {
+                                text: "fragment first".to_owned(),
+                            }),
+                            vec![],
+                        ),
+                        Element::new_host(
+                            WidgetElement::Text(TextElement {
+                                text: "fragment second".to_owned(),
+                            }),
+                            vec![]
+                        ),
+                    ]),
+                ],
             )],
         )
     }

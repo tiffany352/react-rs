@@ -2,11 +2,13 @@ use super::HostNode;
 use super::StatefulNodeWrapper;
 use element::DomNode;
 use element::{Element, HostElement};
+use flat_tree::NodeChildren;
 use reconciler::GenericStateUpdater;
 
 pub enum VirtualNode<H: HostElement> {
     Host(HostNode<H>),
     Stateful(Box<dyn StatefulNodeWrapper<H>>),
+    Fragment(NodeChildren<VirtualNode<H>>),
 }
 
 impl<H> VirtualNode<H>
@@ -21,6 +23,7 @@ where
             Element::Host { element, children } => {
                 (VirtualNode::Host(HostNode::mount(element)), children)
             }
+            Element::Fragment(children) => (VirtualNode::Fragment(NodeChildren::new()), children),
             Element::Stateful(node_creator) => {
                 let mut node = node_creator.create_node();
                 let children = node.mount(updater);
@@ -81,20 +84,21 @@ where
         match node {
             VirtualNode::Host(_) => (),
             VirtualNode::Stateful(mut node) => node.unmount(updater),
+            VirtualNode::Fragment(_) => (),
         }
     }
 
-    pub fn render<'a, Dom>(&'a self, mut children: Vec<Dom>) -> Option<Dom>
+    pub fn render<'a, Dom>(&'a self, children: Vec<Dom>) -> Vec<Dom>
     where
         Dom: DomNode<'a, Widget = H>,
     {
         match *self {
-            VirtualNode::Host(ref node) => node.render(children),
-            VirtualNode::Stateful(_) => {
-                assert!(children.len() <= 1);
-                let one_child = children.pop();
-                one_child
-            }
+            VirtualNode::Host(ref node) => match node.render(children) {
+                Some(dom) => vec![dom],
+                None => vec![],
+            },
+            VirtualNode::Stateful(_) => children,
+            VirtualNode::Fragment(_) => children,
         }
     }
 }

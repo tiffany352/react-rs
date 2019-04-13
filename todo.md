@@ -5,7 +5,7 @@
 - [x] `VirtualTree::update`
 - [x] `VirtualTree::unmount`
 - [ ] Element keys
-- [ ] Fragments
+- [x] Fragments
 - [ ] Context
 
 ### Lifecycle methods

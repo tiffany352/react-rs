@@ -78,6 +78,7 @@ where
     ) -> Result<Option<Element<H>>, Element<H>> {
         match element {
             Element::Host { .. } => Err(element),
+            Element::Fragment(_) => Err(element),
             Element::Stateful(element) => {
                 match element.as_any().downcast_ref::<StatefulElement<H, Class>>() {
                     Some(element) => {
