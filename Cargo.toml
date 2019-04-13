@@ -5,6 +5,13 @@ authors = ["Tiffany Bennett <tiffnixen@gmail.com>"]
 
 [dependencies]
 
+[dev-dependencies]
+ggez = "0.5.0-rc.2"
+
+[dev-dependencies.sdl2]
+version = "0.31"
+features = [ "bundled" ]
+
 [dev-dependencies.snax]
 git = "https://github.com/LPGhatguy/snax.git"
 version = "0.1"

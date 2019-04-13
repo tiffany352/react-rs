@@ -28,9 +28,12 @@ pub struct StatefulElement<H: HostElement, Class: Component<H>> {
 }
 
 impl<H: HostElement> Element<H> {
-    pub fn new_host(elt: H, children: Vec<Element<H>>) -> Element<H> {
+    pub fn new_host<A>(elt: A, children: Vec<Element<H>>) -> Element<H>
+    where
+        A: Into<H>,
+    {
         Element::Host {
-            element: elt,
+            element: elt.into(),
             children: children,
         }
     }
