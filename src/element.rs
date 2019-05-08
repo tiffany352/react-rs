@@ -1,66 +1,57 @@
-use component::Component;
-use reconciler::StatefulElementWrapper;
-use std::marker::PhantomData;
-
-pub trait DomNode<'a>
-where
-    Self: 'a + Sized,
-{
-    type Widget;
-
-    fn new_dom_node(h: &'a Self::Widget, children: Vec<Self>) -> Self;
-}
-
 pub trait HostElement: 'static + Sized + PartialEq {}
 
-pub enum Element<H: HostElement> {
+enum ElementChildren<'a, H>
+where
+    H: HostElement,
+{
+    Owned(Vec<Element<'a, H>>),
+    Borrowed(&'a [Element<'a, H>]),
+}
+
+pub enum Element<'a, H>
+where
+    H: HostElement,
+{
     Host {
-        element: H,
-        children: Vec<Element<H>>,
+        element: &'a H,
+        children: ElementChildren<'a, H>,
     },
-    Stateful(Box<dyn StatefulElementWrapper<H>>),
-    Fragment(Vec<Element<H>>),
+    Fragment(ElementChildren<'a, H>),
 }
 
-pub struct StatefulElement<H: HostElement, Class: Component<H>> {
-    pub props: Class::Props,
-    _phantom: PhantomData<(H, Class)>,
-}
-
-impl<H: HostElement> Element<H> {
-    pub fn new_host<A>(elt: A, children: Vec<Element<H>>) -> Element<H>
+impl<'a, H: HostElement> Element<'a, H> {
+    pub fn new<Children>(elt: &'a H, children: Children) -> Element<'a, H>
     where
-        A: Into<H>,
+        Children: Into<ElementChildren<'a, H>>,
     {
         Element::Host {
-            element: elt.into(),
-            children: children,
+            element: elt,
+            children: children.into(),
         }
     }
 
-    pub fn new_fragment(children: Vec<Element<H>>) -> Element<H> {
-        Element::Fragment(children)
-    }
-
-    pub fn new_functional<F, Props>(
-        _func: F,
-        _props: Props,
-        _children: Vec<Element<H>>,
-    ) -> Element<H>
+    pub fn create_fragment<Children>(children: Children) -> Element<'a, H>
     where
-        F: Fn(&Props, &[Element<H>]) -> Element<H> + 'static,
-        Props: 'static,
+        Children: Into<ElementChildren<'a, H>>,
     {
-        unimplemented!()
+        Element::Fragment(children.into())
     }
+}
 
-    pub fn new_stateful<Class>(props: Class::Props) -> Element<H>
-    where
-        Class: Component<H> + 'static,
-    {
-        Element::Stateful(Box::new(StatefulElement {
-            props: props,
-            _phantom: PhantomData::<(H, Class)>,
-        }))
+impl<'a, H> From<Vec<Element<'a, H>>> for ElementChildren<'a, H>
+where
+    H: HostElement,
+{
+    fn from(vec: Vec<Element<'a, H>>) -> Self {
+        ElementChildren::Owned(vec)
+    }
+}
+
+impl<'a, H> From<&'a [Element<'a, H>]> for ElementChildren<'a, H>
+where
+    H: HostElement,
+{
+    fn from(arr: &'a [Element<'a, H>]) -> Self {
+        ElementChildren::Borrowed(arr)
     }
 }

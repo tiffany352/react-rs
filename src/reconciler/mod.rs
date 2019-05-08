@@ -1,31 +1,23 @@
 use component::Component;
-use element::DomNode;
 use element::{Element, HostElement};
 use flat_tree::FlatTree;
 use flat_tree::GetNodeChildren;
-use flat_tree::NodeChildren;
 use flat_tree::NodeKey;
 use reconciler::stateful_node::StatefulNode;
-use std::any::Any;
+use reconciler::virtual_node::VirtualNodeBox;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
-mod host_node;
 mod stateful_node;
 mod virtual_node;
 
-pub use self::host_node::HostNode;
-pub use self::stateful_node::StatefulNodeWrapper;
 pub use self::virtual_node::VirtualNode;
 
-pub trait StatefulElementWrapper<H: HostElement>: Any {
-    fn create_node(&self) -> Box<dyn StatefulNodeWrapper<H>>;
-
-    fn as_any(&self) -> &dyn Any;
-}
-
-struct UpdateQueue<H: HostElement> {
-    queue: Arc<Mutex<Vec<Box<FnMut(&mut VirtualTree<H>)>>>>,
+struct UpdateQueue<H>
+where
+    H: HostElement,
+{
+    queue: Arc<Mutex<Vec<Box<FnMut(&mut VirtualTreeImpl<H>)>>>>,
 }
 
 impl<H> Clone for UpdateQueue<H>
@@ -41,7 +33,7 @@ where
 
 pub struct GenericStateUpdater<H: HostElement> {
     queue: UpdateQueue<H>,
-    node: NodeKey<VirtualNode<H>>,
+    node: NodeKey<VirtualNodeBox<H>>,
 }
 
 impl<H> Clone for GenericStateUpdater<H>
@@ -60,7 +52,7 @@ impl<H> GenericStateUpdater<H>
 where
     H: HostElement,
 {
-    fn new(queue: &UpdateQueue<H>, key: NodeKey<VirtualNode<H>>) -> GenericStateUpdater<H> {
+    fn new(queue: &UpdateQueue<H>, key: NodeKey<VirtualNodeBox<H>>) -> GenericStateUpdater<H> {
         GenericStateUpdater {
             queue: queue.clone(),
             node: key,
@@ -81,7 +73,7 @@ where
 
 pub struct StateUpdater<H: HostElement, Class: Component<H>> {
     queue: UpdateQueue<H>,
-    node: NodeKey<VirtualNode<H>>,
+    node: NodeKey<VirtualNodeBox<H>>,
     _phantom: PhantomData<Class>,
 }
 
@@ -105,16 +97,11 @@ where
         let mut func = Some(func);
         let updater = self.unspecialize();
         self.queue.push(move |tree| {
-            let element = match tree.tree.get_mut(index) {
-                VirtualNode::Host(_) => panic!(),
-                VirtualNode::Fragment(_) => panic!(),
-                VirtualNode::Stateful(node) => {
-                    match node.as_any_mut().downcast_mut::<StatefulNode<H, Class>>() {
-                        Some(ref mut node) => {
-                            node.update_state(func.take().unwrap(), updater.clone())
-                        }
-                        None => panic!(),
-                    }
+            let element = {
+                let node = tree.tree.get_mut(index);
+                match node.as_any_mut().downcast_mut::<StatefulNode<H, Class>>() {
+                    Some(ref mut node) => node.update_state(func.take().unwrap(), updater.clone()),
+                    None => panic!(),
                 }
             };
             let child = tree.tree.get_children(index).first().map(|&x| x);
@@ -135,85 +122,71 @@ where
         }
     }
 
-    pub fn push<Func: FnMut(&mut VirtualTree<H>) + 'static>(&self, func: Func) {
+    pub fn push<Func: FnMut(&mut VirtualTreeImpl<H>) + 'static>(&self, func: Func) {
         self.queue.lock().unwrap().push(Box::new(func));
     }
 }
 
-pub struct VirtualTree<H: HostElement> {
-    tree: FlatTree<VirtualNode<H>>,
+struct VirtualTreeImpl<H>
+where
+    H: HostElement,
+{
+    tree: FlatTree<VirtualNodeBox<H>>,
     update_queue: UpdateQueue<H>,
 }
 
-impl<H> GetNodeChildren for VirtualNode<H>
+impl<H> VirtualTreeImpl<H> where H: HostElement {}
+
+pub struct VirtualTree<H, Root>
 where
     H: HostElement,
+    Root: Component<H>,
 {
-    fn get_children(&self) -> &NodeChildren<Self> {
-        match *self {
-            VirtualNode::Host(ref host_node) => &host_node.children,
-            VirtualNode::Stateful(ref stateful_node) => stateful_node.get_children(),
-            VirtualNode::Fragment(ref children) => children,
-        }
-    }
-
-    fn get_children_mut(&mut self) -> &mut NodeChildren<Self> {
-        match *self {
-            VirtualNode::Host(ref mut host_node) => &mut host_node.children,
-            VirtualNode::Stateful(ref mut stateful_node) => stateful_node.get_children_mut(),
-            VirtualNode::Fragment(ref mut children) => children,
-        }
-    }
+    tree: VirtualTreeImpl<H>,
+    _phantom: PhantomData<Root>,
 }
 
-impl<H> VirtualTree<H>
+impl<H, Root> VirtualTree<H, Root>
 where
     H: HostElement,
+    Root: Component<H>,
 {
-    pub fn mount(element: Element<H>) -> Self {
+    pub fn mount(initial_props: Root::Props) -> Self {
         let queue = UpdateQueue::new();
-        let tree = FlatTree::build(element, |node, index| {
-            VirtualNode::mount(node, GenericStateUpdater::new(&queue, index))
+        let tree = FlatTree::build(initial_props, |props, key| {
+            let root = StatefulNode::mount(initial_props);
+
+            (Box::new(root) as VirtualNodeBox<H>, vec![])
         });
 
         VirtualTree {
-            tree: tree,
-            update_queue: queue,
-        }
-    }
-
-    fn update_subtree(&mut self, node: NodeKey<VirtualNode<H>>, element: Element<H>) {
-        let queue = &self.update_queue;
-        self.tree.update_subtree(
-            node,
-            element,
-            &mut |node, index| VirtualNode::mount(node, GenericStateUpdater::new(queue, index)),
-            &mut |node, element, index| {
-                VirtualNode::update(node, element, GenericStateUpdater::new(queue, index))
+            tree: VirtualTreeImpl {
+                tree: tree,
+                update_queue: queue,
             },
-            &mut |node, index| VirtualNode::unmount(node, GenericStateUpdater::new(queue, index)),
-        );
+            _phantom: PhantomData,
+        }
     }
 
     pub fn flush(&mut self) {
         let items = {
-            let mut guard = self.update_queue.queue.lock().unwrap();
+            let mut guard = self.tree.update_queue.queue.lock().unwrap();
             let items = guard
                 .drain(..)
-                .collect::<Vec<Box<FnMut(&mut VirtualTree<H>)>>>();
+                .collect::<Vec<Box<FnMut(&mut VirtualTreeImpl<H>)>>>();
             items
         };
         for mut func in items.into_iter() {
-            (func)(self);
+            (func)(&mut self.tree);
         }
     }
 
-    pub fn update(&mut self, element: Element<H>) {
+    pub fn update(&mut self, props: Root::Props) {
         self.flush();
 
-        let queue = &self.update_queue;
-        self.tree.update_tree(
-            element,
+        let queue = &self.tree.update_queue;
+        self.tree.tree.update_tree(
+            props,
             &mut |node, index| VirtualNode::mount(node, GenericStateUpdater::new(&queue, index)),
             &mut |node, element, index| {
                 VirtualNode::update(node, element, GenericStateUpdater::new(&queue, index))
@@ -223,20 +196,22 @@ where
     }
 
     pub fn unmount(self) {
-        let queue = self.update_queue;
-        self.tree.unbuild(|node, _, index| {
+        let queue = self.tree.update_queue;
+        self.tree.tree.unbuild(|node, _, index| {
             VirtualNode::unmount(node, GenericStateUpdater::new(&queue, index))
         });
     }
 
-    pub fn render<'a, Dom>(&'a self) -> Option<Dom>
-    where
-        Dom: DomNode<'a, Widget = H>,
-    {
+    pub fn render<'a>(&'a self) -> Element<'a, H> {
         let result = self
             .tree
             .recurse(|node, children| {
-                node.render(children.into_iter().flatten().collect::<Vec<Dom>>())
+                node.render(
+                    children
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<Element<'a, H>>>(),
+                )
             })
             .unwrap_or(vec![]);
         assert!(result.len() <= 1);

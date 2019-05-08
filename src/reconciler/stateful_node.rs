@@ -1,12 +1,13 @@
 use component::Component;
+use component::CreateContext;
 use component::RenderContext;
 use element::Element;
-use element::{HostElement, StatefulElement};
+use element::HostElement;
 use flat_tree::NodeChildren;
+use reconciler::virtual_node::VirtualNodeBox;
 use reconciler::GenericStateUpdater;
-use reconciler::{StatefulElementWrapper, VirtualNode};
+use reconciler::VirtualNode;
 use std::any::Any;
-use std::clone::Clone;
 use std::marker::PhantomData;
 
 pub struct StatefulNode<H, Class>
@@ -17,22 +18,8 @@ where
     component: Class,
     props: Class::Props,
     state: Option<Class::State>,
-    children: NodeChildren<VirtualNode<H>>,
+    children: NodeChildren<VirtualNodeBox<H>>,
     _phantom: PhantomData<H>,
-}
-
-pub trait StatefulNodeWrapper<H: HostElement> {
-    fn mount(&mut self, updater: GenericStateUpdater<H>) -> Element<H>;
-    fn update(
-        &mut self,
-        element: Element<H>,
-        updater: GenericStateUpdater<H>,
-    ) -> Result<Option<Element<H>>, Element<H>>;
-    fn unmount(&mut self, updater: GenericStateUpdater<H>);
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn get_children(&self) -> &NodeChildren<VirtualNode<H>>;
-    fn get_children_mut(&mut self) -> &mut NodeChildren<VirtualNode<H>>;
 }
 
 impl<H, Class> StatefulNode<H, Class>
@@ -40,6 +27,19 @@ where
     H: HostElement,
     Class: Component<H> + 'static,
 {
+    pub fn mount(initial_props: Class::Props) -> Self {
+        let (component, state) = Class::create(CreateContext {
+            props: &initial_props,
+        });
+        StatefulNode {
+            component: component,
+            props: initial_props,
+            state: Some(state),
+            children: NodeChildren::new(),
+            _phantom: PhantomData,
+        }
+    }
+
     pub fn update_state<Func>(&mut self, func: Func, updater: GenericStateUpdater<H>) -> Element<H>
     where
         Func: FnOnce(Class::State) -> Class::State,
@@ -54,64 +54,11 @@ where
     }
 }
 
-impl<H, Class> StatefulNodeWrapper<H> for StatefulNode<H, Class>
+impl<H, Class> VirtualNode<H> for StatefulNode<H, Class>
 where
     H: HostElement,
     Class: Component<H> + 'static,
 {
-    fn mount(&mut self, updater: GenericStateUpdater<H>) -> Element<H> {
-        let element = self.component.render(RenderContext {
-            props: &self.props,
-            state: self.state.as_ref().unwrap(),
-            updater: updater.specialize(),
-        });
-
-        self.component.did_mount();
-
-        element
-    }
-
-    fn update(
-        &mut self,
-        element: Element<H>,
-        updater: GenericStateUpdater<H>,
-    ) -> Result<Option<Element<H>>, Element<H>> {
-        match element {
-            Element::Host { .. } => Err(element),
-            Element::Fragment(_) => Err(element),
-            Element::Stateful(element) => {
-                match element.as_any().downcast_ref::<StatefulElement<H, Class>>() {
-                    Some(element) => {
-                        if self.props != element.props {
-                            self.props = element.props.clone();
-
-                            self.state = Some(Class::get_derived_state_from_props(
-                                &self.props,
-                                self.state.take().unwrap(),
-                            ));
-
-                            let element = self.component.render(RenderContext {
-                                props: &self.props,
-                                state: self.state.as_ref().unwrap(),
-                                updater: updater.specialize(),
-                            });
-
-                            Ok(Some(element))
-                        } else {
-                            Ok(None)
-                        }
-                    }
-                    None => Err(()),
-                }
-                .map_err(|_| Element::Stateful(element))
-            }
-        }
-    }
-
-    fn unmount(&mut self, _updater: GenericStateUpdater<H>) {
-        self.component.will_unmount();
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -120,33 +67,21 @@ where
         self
     }
 
-    fn get_children(&self) -> &NodeChildren<VirtualNode<H>> {
+    fn get_children(&self) -> &NodeChildren<VirtualNodeBox<H>> {
         &self.children
     }
 
-    fn get_children_mut(&mut self) -> &mut NodeChildren<VirtualNode<H>> {
+    fn get_children_mut(&mut self) -> &mut NodeChildren<VirtualNodeBox<H>> {
         &mut self.children
     }
-}
 
-impl<H, Class> StatefulElementWrapper<H> for StatefulElement<H, Class>
-where
-    H: HostElement,
-    Class: Component<H> + 'static,
-{
-    fn create_node(&self) -> Box<dyn StatefulNodeWrapper<H>> {
-        let (component, initial_state) = Class::create(&self.props);
+    fn render<'a>(&self, updater: GenericStateUpdater<H>) -> Element<'a, H> {
+        let element: Element<'a, H> = self.component.render(RenderContext {
+            props: &self.props,
+            state: self.state.as_ref().unwrap(),
+            updater: updater.specialize(),
+        });
 
-        Box::new(StatefulNode {
-            component: component,
-            props: self.props.clone(),
-            state: Some(initial_state),
-            children: NodeChildren::new(),
-            _phantom: PhantomData,
-        })
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
+        element
     }
 }
